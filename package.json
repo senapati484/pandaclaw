@@ -1,0 +1,26 @@
+{
+  "name": "pandaclaw",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "pandaclaw": "./index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@ai-sdk/groq": "^3.0.39",
+    "@clack/core": "^1.3.1",
+    "@clack/prompts": "^1.4.0",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@types/node": "^25.9.1",
+    "ai": "^6.0.191",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "figlet": "^1.11.0"
+  }
+}

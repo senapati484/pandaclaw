@@ -1,0 +1,1 @@
+export {getAgentModel} from "./ai.config";
