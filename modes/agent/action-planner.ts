@@ -109,9 +109,21 @@ export class ActionPlanner {
     goal: string,
     context: any
   ): MutationProposal[] {
-    // Extract filename from goal
-    const match = goal.match(/create\s+(?:a\s+)?(?:file\s+)?(?:named\s+)?(\w+)/i);
-    const fileName = match ? match[1] : "newfile";
+    // Extract filename from goal - try multiple patterns
+    let fileName = "newfile";
+    
+    // Try pattern: "called X" or "named X"
+    const calledMatch = goal.match(/(?:called|named)\s+(\w+)/i);
+    if (calledMatch) {
+      fileName = calledMatch[1];
+    } else {
+      // Try pattern: "create X" or "file X"
+      const createMatch = goal.match(/(?:create|file)\s+(?:a\s+)?(?:file\s+)?(?:called\s+)?(?:named\s+)?(\w+)/i);
+      if (createMatch) {
+        fileName = createMatch[1];
+      }
+    }
+    
     const filePath = `src/${fileName}.ts`;
 
     return [

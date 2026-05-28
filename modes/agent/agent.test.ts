@@ -139,8 +139,10 @@ test("SessionMemoryManager: success patterns", () => {
   expect(testingPatterns[0].description).toBe("Create test file");
 });
 
-test("CodebaseContextManager: file info creation", () => {
+test("CodebaseContextManager: file info creation", async () => {
   const manager = new CodebaseContextManager(process.cwd());
+  
+  await manager.indexCodebase();
 
   const fileInfo = manager.getIndex().files.get("package.json");
   expect(fileInfo).toBeTruthy();
