@@ -87,7 +87,9 @@ test("SessionMemoryManager: add and retrieve constraints", () => {
 
   const forbidden = memory.getConstraints("forbidden_path");
   expect(forbidden.length).toBe(1);
-  expect(forbidden[0].value).toBe(".env");
+  if (forbidden.length > 0) {
+    expect(forbidden[0]!.value).toBe(".env");
+  }
 });
 
 test("SessionMemoryManager: check constraint violations", () => {
@@ -115,8 +117,10 @@ test("SessionMemoryManager: error patterns", () => {
 
   const topErrors = memory.getTopErrorPatterns(5);
   expect(topErrors.length).toBe(2);
-  expect(topErrors[0].pattern).toBe("ENOENT");
-  expect(topErrors[0].frequency).toBe(2);
+  if (topErrors.length > 0) {
+    expect(topErrors[0]!.pattern).toBe("ENOENT");
+    expect(topErrors[0]!.frequency).toBe(2);
+  }
 });
 
 test("SessionMemoryManager: success patterns", () => {
@@ -136,7 +140,9 @@ test("SessionMemoryManager: success patterns", () => {
 
   const testingPatterns = memory.getSuccessPatternsFor("testing");
   expect(testingPatterns.length).toBe(1);
-  expect(testingPatterns[0].description).toBe("Create test file");
+  if (testingPatterns.length > 0) {
+    expect(testingPatterns[0]!.description).toBe("Create test file");
+  }
 });
 
 test("CodebaseContextManager: file info creation", async () => {
@@ -164,7 +170,9 @@ test("ActionPlanner: create mutation plan", () => {
   expect(plan.description).toBe(
     "Create a test file for ActionTracker"
   );
-  expect(plan.steps[0].type).toBe("file_create");
+  if (plan.steps.length > 0) {
+    expect(plan.steps[0]!.type).toBe("file_create");
+  }
 });
 
 test("ActionPlanner: plan for file creation", () => {
@@ -174,8 +182,11 @@ test("ActionPlanner: plan for file creation", () => {
     codebasePath: process.cwd(),
   });
 
-  expect(plan.steps[0].path).toContain("utils");
-  expect(plan.steps[0].type).toBe("file_create");
+  expect(plan.steps.length).toBeGreaterThan(0);
+  if (plan.steps.length > 0) {
+    expect(plan.steps[0]!.path).toContain("utils");
+    expect(plan.steps[0]!.type).toBe("file_create");
+  }
 });
 
 test("ActionPlanner: plan for deletion (high risk)", () => {
@@ -185,9 +196,12 @@ test("ActionPlanner: plan for deletion (high risk)", () => {
     codebasePath: process.cwd(),
   });
 
-  expect(plan.steps[0].type).toBe("file_delete");
-  expect(plan.steps[0].estimatedRisk).toBe("high");
-  expect(plan.steps[0].requiresApproval).toBe(true);
+  expect(plan.steps.length).toBeGreaterThan(0);
+  if (plan.steps.length > 0) {
+    expect(plan.steps[0]!.type).toBe("file_delete");
+    expect(plan.steps[0]!.estimatedRisk).toBe("high");
+    expect(plan.steps[0]!.requiresApproval).toBe(true);
+  }
   expect(plan.requiresApproval).toBe(true);
 });
 
@@ -256,7 +270,10 @@ test("SessionMemoryManager: memory export/import", () => {
   expect(constraints.length).toBe(1);
 
   const errorPattern = memory2.getTopErrorPatterns(1);
-  expect(errorPattern[0].pattern).toBe("ENOENT");
+  expect(errorPattern.length).toBeGreaterThan(0);
+  if (errorPattern.length > 0) {
+    expect(errorPattern[0]!.pattern).toBe("ENOENT");
+  }
 });
 
 test("ActionTracker: clear for new session", () => {
