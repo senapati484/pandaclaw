@@ -2,9 +2,9 @@ import { generateText } from "ai";
 import type { ModelConfig, ModelTaskType, LLMResponse } from "./types";
 
 const GROQ_MODELS = {
-  fast: "mixtral-8x7b-32768", // Good balance, 32k context
-  coding: "mixtral-8x7b-32768", // Better for code
-  analysis: "llama-3-70b-8192", // Stronger analysis
+  fast: "llama-3.1-8b-instant",
+  coding: "llama-3.1-8b-instant",
+  analysis: "llama-3.3-70b-versatile",
 };
 
 const OPENROUTER_MODELS = {
@@ -19,8 +19,42 @@ export class ModelSelector {
   private modelCache: Map<ModelTaskType, ModelConfig> = new Map();
 
   constructor() {
-    this.groqApiKey = process.env.GROQ_API_KEY || "";
-    this.openrouterApiKey = process.env.OPENROUTER_API_KEY || "";
+    this.groqApiKey = process.env.YOUR_GROQ_API_KEY || process.env.GROQ_API_KEY || "";
+    this.openrouterApiKey = process.env.YOUR_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || "";
+  }
+
+  /**
+   * Run the LLM request based on the selected model config
+   */
+  async generateText(taskType: ModelTaskType, prompt: string, systemPrompt?: string): Promise<string> {
+    const config = await this.selectModel(taskType);
+    let modelInstance: any;
+
+    if (config.provider === "groq") {
+      const { createGroq } = await import("@ai-sdk/groq");
+      const groq = createGroq({
+        apiKey: this.groqApiKey,
+      });
+      modelInstance = groq(config.modelId);
+    } else if (config.provider === "openrouter") {
+      const { createOpenRouter } = await import("@openrouter/ai-sdk-provider");
+      const openrouter = createOpenRouter({
+        apiKey: this.openrouterApiKey,
+      });
+      modelInstance = openrouter.chat(config.modelId);
+    } else {
+      throw new Error(`Unsupported model provider: ${config.provider}`);
+    }
+
+    const { text } = await generateText({
+      model: modelInstance,
+      prompt,
+      system: systemPrompt,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    });
+
+    return text;
   }
 
   /**

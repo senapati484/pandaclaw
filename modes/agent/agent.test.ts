@@ -156,10 +156,10 @@ test("CodebaseContextManager: file info creation", async () => {
   expect(fileInfo?.language).toBe("json");
 });
 
-test("ActionPlanner: create mutation plan", () => {
+test("ActionPlanner: create mutation plan", async () => {
   const planner = new ActionPlanner();
 
-  const plan = planner.createMutationPlan(
+  const plan = await planner.createMutationPlan(
     "Create a test file for ActionTracker",
     {
       codebasePath: process.cwd(),
@@ -175,10 +175,10 @@ test("ActionPlanner: create mutation plan", () => {
   }
 });
 
-test("ActionPlanner: plan for file creation", () => {
+test("ActionPlanner: plan for file creation", async () => {
   const planner = new ActionPlanner();
 
-  const plan = planner.createMutationPlan("Create a new file called utils", {
+  const plan = await planner.createMutationPlan("Create a new file called utils", {
     codebasePath: process.cwd(),
   });
 
@@ -189,10 +189,10 @@ test("ActionPlanner: plan for file creation", () => {
   }
 });
 
-test("ActionPlanner: plan for deletion (high risk)", () => {
+test("ActionPlanner: plan for deletion (high risk)", async () => {
   const planner = new ActionPlanner();
 
-  const plan = planner.createMutationPlan("Remove the old service file", {
+  const plan = await planner.createMutationPlan("Remove the old service file", {
     codebasePath: process.cwd(),
   });
 

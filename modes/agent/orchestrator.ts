@@ -100,9 +100,13 @@ export class AgentOrchestrator {
 
         // Phase 3: PLAN - For complex tasks, create mutation plan
         const plan = await this.phasePlan();
-        if (!plan || plan.steps.length === 0) break;
+        if (!plan || plan.steps.length === 0) {
+          console.log(chalk.yellow("  No mutation steps planned. Stopping."));
+          break;
+        }
 
         // Phase 4: EXECUTE - Execute mutations (hybrid: auto or ask)
+        let anyExecuted = false;
         for (const mutation of plan.steps) {
           const shouldExec = await this.executor.shouldExecute(mutation);
 
@@ -124,8 +128,11 @@ export class AgentOrchestrator {
 
             if (!validation.valid) {
               console.log(chalk.red(`✗ Mutation failed: ${validation.issues.join(", ")}`));
+              this.tracker.updateStatus(action.id, "failed");
             } else {
               console.log(chalk.green(`✓ Mutation succeeded`));
+              this.tracker.updateStatus(action.id, "executed");
+              anyExecuted = true;
             }
           } else {
             this.tracker.log({
@@ -146,6 +153,19 @@ export class AgentOrchestrator {
         // Phase 6: REFLECT - Learn from actions
         await this.phaseReflect();
 
+        // If we executed something this iteration, check if goal is done
+        if (anyExecuted && (await this.isGoalComplete())) {
+          console.log(chalk.green("\n✅ Goal completed!\n"));
+          this.session.isRunning = false;
+          break;
+        }
+
+        // If nothing was executed (all rejected or no-ops), stop
+        if (!anyExecuted) {
+          console.log(chalk.yellow("\n⚠ No mutations executed this iteration. Stopping.\n"));
+          break;
+        }
+
       } catch (error) {
         console.error(chalk.red(`Error in iteration ${this.session.iterationCount}:`), error);
 
@@ -155,13 +175,6 @@ export class AgentOrchestrator {
         });
 
         if (!retry) break;
-      }
-
-      // Check if goal is complete
-      if (await this.isGoalComplete()) {
-        console.log(chalk.green("\n✅ Goal completed!\n"));
-        this.session.isRunning = false;
-        break;
       }
     }
 
@@ -201,13 +214,16 @@ export class AgentOrchestrator {
 
     console.log(chalk.gray("📋 Phase: PLAN"));
 
-    const plan = this.planner.createMutationPlan(this.session.goal, {
+    const plan = await this.planner.createMutationPlan(this.session.goal, {
       codebasePath: this.session.config.codebasePath,
       projectStructure: Array.from(this.session.codebaseIndex.folders.keys()),
       existingFiles: Array.from(this.session.codebaseIndex.files.keys()),
-    });
+    }, this.modelSelector);
 
     console.log(chalk.gray(`  Plan steps: ${plan.steps.length}`));
+    for (const step of plan.steps) {
+      console.log(chalk.gray(`    - Step: type=${step.type}, path=${step.path}, command=${step.command || ""}`));
+    }
     console.log(chalk.gray(`  Risk level: ${plan.estimatedRisk}`));
 
     return plan;

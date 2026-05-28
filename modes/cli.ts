@@ -22,9 +22,11 @@ export async function runCli () {
             const { runAgentMode } = await import("./agent/orchestrator.js");
             await runAgentMode();
         } else if (mode === "plan") {
-            console.log(chalk.green("Welcome to Plan Mode!"));
+            const { runPlanMode } = await import("./plan/orchestrator.js");
+            await runPlanMode();
         } else if (mode === "ask") {
-            console.log(chalk.green("Welcome to Ask Mode!"));
+            const { runAskMode } = await import("./ask/orchestrator.js");
+            await runAskMode();
         } else {
             console.log(chalk.red("Unknown mode. Please try again."));
         }

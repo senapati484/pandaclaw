@@ -1,4 +1,4 @@
-import { createFileSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { confirm, text } from "@clack/prompts";
 import chalk from "chalk";
@@ -69,6 +69,12 @@ export class MutationExecutor {
         case "shell_command":
           await this.executeShellCommand(mutation.command!);
           break;
+        default:
+          // Unknown/analysis type — treat as no-op but log it
+          console.log(
+            `⚠ Skipping unsupported mutation type: ${(mutation as any).type}`
+          );
+          break;
       }
 
       this.executedCount++;
@@ -134,7 +140,7 @@ export class MutationExecutor {
     if (mutation.content) {
       writeFileSync(fullPath, mutation.content, "utf-8");
     } else {
-      createFileSync(fullPath);
+      writeFileSync(fullPath, "", "utf-8");
     }
   }
 

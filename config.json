@@ -1,0 +1,23 @@
+{
+  "providers": {
+    "groq": {
+      "api_key": "",
+      "api_base": "https://api.groq.com/openai/v1"
+    },
+    "openrouter": {
+      "api_key": "",
+      "api_base": "https://openrouter.ai/api/v1"
+    },
+    "nvidia_nim": {
+      "api_key": "",
+      "api_base": "https://integrate.api.nvidia.com/v1"
+    }
+  },
+  "routing": {
+    "fast_path": { "provider": "groq", "model": "llama-3.3-70b-versatile" },
+    "panda_mode": { "provider": "openrouter", "model": "deepseek/deepseek-r1" },
+    "vision_screenshot": { "provider": "nvidia_nim", "model": "meta/llama-3.2-11b-vision-instruct" },
+    "vision_document": { "provider": "nvidia_nim", "model": "microsoft/phi-3.5-vision-128k-instruct" },
+    "vision_chart": { "provider": "openrouter", "model": "qwen/qwen2-vl-7b-instruct" }
+  }
+}
