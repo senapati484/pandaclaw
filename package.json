@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun run index.ts wakeup",
+    "dashboard": "bun run canvas/server.ts"
+  },
   "bin": {
     "pandaclaw": "./index.ts"
   },

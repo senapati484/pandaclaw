@@ -1,211 +1,204 @@
 # 🐼 PandaClaw
 
-<img width="1594" height="329" alt="pandaclaw" src="https://github.com/user-attachments/assets/c7945125-8f33-435a-9913-aafaf1113351" />
+<p align="center">
+  <img width="1594" height="329" alt="pandaclaw" src="https://github.com/user-attachments/assets/c7945125-8f33-435a-9913-aafaf1113351" />
+</p>
 
+<p align="center">
+  <strong>Slow is smooth. Smooth is perfect.</strong>
+</p>
 
-> *Slow is smooth. Smooth is perfect.*
-
-PandaClaw is a **reasoning-first agentic CLI** built with TypeScript and Bun. It plans before it acts, asks before it mutates, and learns from every session. Point it at a goal and watch it break the work down, validate each step, and reflect on what it did.
-
----
-
-## Features
-
-- **Agent Mode** — Observe → Reason → Plan → Execute → Reflect reactor loop. Creates, modifies, and deletes files based on your goal using a real LLM (Groq / OpenRouter) or a built-in offline planner.
-- **Plan Mode** — Decompose a high-level goal into a validated, optimised task graph before touching anything.
-- **Ask Mode** — Ask questions about the current codebase and get codebase-aware answers.
-- **Hybrid execution** — Low-risk mutations run automatically; high-risk ones always ask for your approval first.
-- **Free-tier LLM stack** — Groq (llama-3) is the default; OpenRouter is the fallback. Both have generous free tiers.
-- **Session memory** — Constraints, error patterns, and reflections persist across iterations within a session.
+<p align="center">
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%E2%89%A5%201.3.3-black?style=for-the-badge&logo=bun" alt="Bun version"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-v5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://groq.com/"><img src="https://img.shields.io/badge/Groq-Llama%203-orange?style=for-the-badge" alt="Groq Llama 3"></a>
+  <a href="https://openrouter.ai/"><img src="https://img.shields.io/badge/OpenRouter-R1-deepskyblue?style=for-the-badge" alt="OpenRouter DeepSeek R1"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
+</p>
 
 ---
 
-## Requirements
+**PandaClaw** is a *deliberate, reasoning-first, and vision-native personal AI assistant* built on Bun. 
 
-| Tool | Version |
-|------|---------|
-| [Bun](https://bun.sh) | ≥ 1.3.3 |
-| Node.js | not required (Bun replaces it) |
+Unlike traditional agents that act instantly, PandaClaw operates with strict planning, multi-agent worker coordination, Git transaction boundaries, and a live visual canvas dashboard you run locally. If you want a Single-User Assistant that feels local, safe, highly thoughtful, and visually interactive—PandaClaw is it.
 
 ---
 
-## Installation
+## 🚀 PandaClaw v3 Core Architecture
 
-```bash
-# Clone the repo
-git clone https://github.com/senapati484/pandaclaw
-cd pandaclaw
+### 🔒 1. Sandboxing & Git-Backed Rollbacks
+*   **Git-Backed Transactions**: All file system mutations run on a temporary git branch (`pandaclaw-tx-<uuid>`). If validation fails or you decline the changes, the workspace is rolled back to its clean commit state instantly.
+*   **Bun Process Sandbox**: Arbitrary scripts and command executions are run using a native `Bun.spawn` sandbox with stripped environment secrets (protecting API tokens) and strict timeouts.
 
-# Install dependencies
-bun install
+### 🐝 2. Coordinator-Worker Swarm
+*   **Coordinator**: Main planner that decomposes your high-level goal into a dependency tree of sub-tasks (`SwarmTask`).
+*   **Specialized Workers**: Tasks are processed concurrently by specialized agents:
+    *   `researcher`: Searches the web, reads codebase files, and gathers facts.
+    *   `coder`: Implements logic and creates or modifies source code.
+    *   `verifier`: Reviews syntax, runs tests, and sanity checks code.
+    *   `visualizer`: Extracts spatial layout elements or builds UI reports.
+*   **R1 Reasoning Compiler**: Extracts and parses structured DeepSeek R1 `<think>` traces and applies critique-correction verification loops.
 
-# Link the CLI globally
-bun link
-```
+### 🎨 3. Local Visual Web Canvas
+*   Serve a premium glassmorphic dashboard locally on `http://localhost:18789`.
+*   **Chat Interface**: Real-time messaging with visual thinking traces.
+*   **Visual Canvas**: Real-time canvas overlay rendering bounding box coordinates from the vision locating pipeline.
+*   **Terminal & Diff Viewer**: Live system websocket logs with interactive Accept/Decline approval keys for file mutations.
 
-After linking, the `pandaclaw` command is available anywhere on your system.
+### 🧠 4. Self-Consolidating Episodic Memory Graph
+*   An idle compiler parses raw logs and uses Groq to structure entity constraints, success patterns, and lessons directly to `.pandaclaw/KNOWLEDGE_GRAPH.md`.
+*   The Knowledge Graph is automatically loaded as contextual facts for subsequent tasks.
 
----
-
-## Configuration
-
-Copy `.env.example` (or create `.env`) and fill in at least one API key:
-
-```env
-YOUR_GROQ_API_KEY=gsk_...
-YOUR_OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-- **Groq** is the primary provider (fast, free tier, llama-3.1).
-- **OpenRouter** is the fallback. Set `OPENROUTER_DEFAULT_MODEL` to override the model.
-- If neither key is present, PandaClaw falls back to the built-in offline planner (pattern-matching, no LLM).
-
----
-
-## Usage
-
-### Wake up the panda
-
-```bash
-pandaclaw wakeup
-```
-
-This launches the interactive TUI. You will be prompted to choose a mode:
-
-```
-┌  PandaClaw 🐼
-│
-◇  Choose CLI sub-mode
-│  ● Agent Mode
-│  ○ Plan Mode
-│  ○ Ask Mode
-│  ○ ⬅ back to main menu
-```
-
-### Agent Mode
-
-Creates and modifies files autonomously to achieve your goal.
-
-```
-What is your goal? › create one file named testing.txt
-```
-
-PandaClaw will:
-1. Index the codebase
-2. Plan the mutations needed (via LLM or offline planner)
-3. Show each step and ask for approval on risky operations
-4. Execute, validate, and reflect
-
-### Plan Mode
-
-Decomposes a goal into a validated task graph without executing anything.
-
-```
-What is the goal? › add authentication to the API
-```
-
-Outputs a structured plan with dependency ordering, risk estimates, and a critical path.
-
-### Ask Mode
-
-Ask any question about the codebase.
-
-```
-Ask PandaClaw a question › how does the reactor loop work?
-```
+### ⚡ 5. Unified Pluggable Event Gateway
+*   Abstracted channel adapter layer supporting pluggable integrations:
+    *   `telegram`: Polling Telegram API routing text prompts and downloaded photo buffers.
+    *   `slack`: POST webhook event ingestion and channel posts.
+    *   `webchat`: Direct message routing from the local canvas dashboard.
 
 ---
 
-## Project Structure
+## 📦 Project Directory Layout
 
 ```
 pandaclaw/
-├── index.ts                  # CLI entry point (commander)
-├── tui/
-│   └── wakeup.ts             # ASCII banner + mode launcher
+├── index.ts                    # CLI Entrypoint (Commander)
+├── config.json                 # Gateway & API Keys Config
+├── ai/
+│   ├── ai.config.ts            # Config Parser with Env Overrides
+│   └── providers/
+│       ├── nvidia-nim.ts       # NIM Vision Models
+│       └── r1-compiler.ts      # DeepSeek R1 Parsing & Verifier
+├── sandbox/                     # Bun-Native Process Sandbox
+├── fs/                         # Transactional Git File System
+├── memory/
+│   ├── store.ts                # JSONL Persistent Memory
+│   └── consolidator.ts         # Knowledge Graph Summarizer
 ├── modes/
-│   ├── cli.ts                # Mode router
+│   ├── cli.ts                  # Interactive CLI Sub-modes
 │   ├── agent/
-│   │   ├── orchestrator.ts   # Reactor loop (Observe→Reason→Plan→Execute→Reflect)
-│   │   ├── action-planner.ts # LLM + offline mutation planner
-│   │   ├── mutation-executor.ts  # File/folder/shell operations
-│   │   ├── reflection-engine.ts  # Validates mutations, suggests next steps
-│   │   ├── action-tracker.ts     # Logs every action with status
-│   │   ├── session-memory.ts     # Constraints, errors, reflections
-│   │   ├── context-manager.ts    # Codebase indexer
-│   │   ├── model-selector.ts     # Groq / OpenRouter model picker
-│   │   └── types.ts
-│   ├── plan/
-│   │   ├── orchestrator.ts   # Plan Mode entry point
-│   │   ├── plan-generator.ts # Goal → task graph
-│   │   ├── plan-validator.ts # Cycle detection, dependency check
-│   │   ├── plan-optimizer.ts # Topological sort, critical path
-│   │   └── types.ts
-│   └── ask/
-│       └── orchestrator.ts   # Ask Mode entry point
-└── ai/
-    └── ai.config.ts          # Vercel AI SDK configuration
+│   │   ├── orchestrator.ts     # Reactor Loop Orchestrator
+│   │   └── swarm/              # Swarm Coordinator & Worker Dispatchers
+│   ├── plan/                   # Strategic Planner Mode
+│   ├── ask/                    # Codebase-Aware Conversation Mode
+│   └── gateway/                # Unified Channel Gateway & Pluggable Adapters
+├── canvas/                     # Local Canvas Web Dashboard Server
+├── vision/                     # 4-stage Vision Pipeline (Perceive → Locate → Reason → Act)
+├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec)
+└── tests/                      # Suite of 27 Unit Tests (Swarm, Sandbox, Transactions)
 ```
 
 ---
 
-## Development
+## 🛠️ Installation
 
 ```bash
-# Run tests
-bun test
+# Clone the repository
+git clone https://github.com/senapati484/pandaclaw
+cd pandaclaw
 
-# Run directly (without global link)
-bun run index.ts wakeup
+# Install Bun dependencies
+bun install
 
-# Type-check
-bun tsc --noEmit
+# Link the binary globally
+bun link
 ```
 
 ---
 
-## How the Reactor Loop Works
+## ⚙️ Configuration
+
+Create or modify `config.json` at the root of the workspace:
+
+```json
+{
+  "providers": {
+    "groq": {
+      "api_key": "YOUR_GROQ_API_KEY",
+      "api_base": "https://api.groq.com/openai/v1"
+    },
+    "openrouter": {
+      "api_key": "YOUR_OPENROUTER_API_KEY",
+      "api_base": "https://openrouter.ai/api/v1"
+    },
+    "nvidia_nim": {
+      "api_key": "YOUR_NVIDIA_NIM_KEY",
+      "api_base": "https://integrate.api.nvidia.com/v1"
+    }
+  },
+  "telegram": {
+    "token": "YOUR_BOTFATHER_TOKEN",
+    "allowed_users": [12345678]
+  }
+}
+```
+
+*You can also set these keys via environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`).*
+
+---
+
+## 🎮 Usage
+
+### 1. Launch CLI Wakeup menu
+```bash
+pandaclaw wakeup
+# or
+bun run dev
+```
+
+### 2. Start Visual Canvas Dashboard
+```bash
+bun run dashboard
+```
+Open `http://localhost:18789` in your browser to view the interactive control center.
+
+---
+
+## 🔄 How the Reactor Loop Works
 
 ```
 ┌─────────────┐
-│   OBSERVE   │  Index codebase, read session memory
+│   OBSERVE   │  Index codebase, load memory & Knowledge Graph
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│   REASON    │  Is the goal still incomplete? Should we continue?
+│   REASON    │  Evaluate goal status and R1 thought budget
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│    PLAN     │  LLM or offline planner → MutationPlan (ordered steps)
+│    PLAN     │  Topological task graph generation & critical path
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│   EXECUTE   │  For each step: auto-exec (low risk) or ask (high risk)
+│   EXECUTE   │  Run workers (low risk → auto, high risk/git tx → approve)
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│  VALIDATE   │  Check file exists / content matches intent
+│  VALIDATE   │  Verify output correctness & syntax critique
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│   REFLECT   │  Learn from failures, update session memory
+│   REFLECT   │  Record success/failure, update episodic graph
 └─────────────┘
 ```
 
-The loop exits when the goal is complete, all mutations are rejected, or `maxIterations` (default: 20) is reached.
+---
+
+## ⚠️ Risk Safety Model
+
+PandaClaw operates with safe defaults:
+
+| Risk Level | Mutation Type | Behaviour |
+| :--- | :--- | :--- |
+| **Low** | Directory creation, file edits < 50KB | Auto-execute & validate |
+| **Medium** | Large file edits, multiple mutations | Auto-execute up to threshold |
+| **High** | Deletion, shell execution, config changes | Git transaction sandbox & interactive approval |
 
 ---
 
-## Risk Model
-
-| Risk Level | Trigger | Behaviour |
-|------------|---------|-----------|
-| `low` | New file, small content | Auto-execute |
-| `medium` | Large file, modify existing | Auto-execute (up to threshold) |
-| `high` | Delete, shell command, `.env`, `package.json` | Always ask for approval |
+## 🐼 Bamboo
+PandaClaw was built for **Bamboo**, a space panda AI assistant who likes leaves, logs, and logical reasoning. 🍃
 
 ---
 
-## License
-
-MIT
+## 📜 License
+PandaClaw is open-source software licensed under the [MIT License](LICENSE).
