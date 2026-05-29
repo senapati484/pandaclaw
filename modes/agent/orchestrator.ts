@@ -344,7 +344,38 @@ export async function runAgentMode(): Promise<void> {
     }
   }
 
-  console.log(chalk.cyan("\n🐼 Swarm Synthesis Output:\n"));
-  console.log(result.result);
+  console.log(chalk.cyan("\n🐼 Swarm Synthesis Summary:\n"));
+  
+  const fullResult = result.result;
+  const lines = fullResult.split("\n");
+  const shortSummary = lines.slice(0, 3).join("\n");
+  console.log(shortSummary);
+  if (lines.length > 3) {
+    console.log(chalk.gray("\n      ... (additional details omitted for clarity)"));
+  }
+
+  // Write full log to workspace file
+  const fs = await import("fs");
+  const path = await import("path");
+  const logDir = path.join(process.cwd(), ".pandaclaw");
+  const logPath = path.join(logDir, "latest_swarm_run.md");
+  try {
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
+    fs.writeFileSync(logPath, fullResult, "utf8");
+    console.log(chalk.dim(`\n📝 Full detailed log saved to: .pandaclaw/latest_swarm_run.md`));
+  } catch {}
+
+  console.log("");
+  const showFull = await confirm({
+    message: "Would you like to print the full detailed response in the terminal?",
+    initialValue: false,
+  });
+
+  if (showFull && !isCancel(showFull)) {
+    console.log(chalk.cyan("\n--- Full Swarm Output ---"));
+    console.log(fullResult);
+    console.log(chalk.cyan("-------------------------"));
+  }
+
   console.log(chalk.cyan("\nThanks for using Swarm Agent Mode! 🐼\n"));
 }
