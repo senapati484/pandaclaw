@@ -1,6 +1,7 @@
 import type { SwarmTask, SwarmContext, SwarmWorkerType } from "./types.js";
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import { runTool } from "../../../tools/index.js";
+import chalk from "chalk";
 
 export class SwarmWorker {
   private type: SwarmWorkerType;
@@ -15,9 +16,15 @@ export class SwarmWorker {
     task.status = "in_progress";
 
     try {
-      const apiKey = this.config.providers.groq.api_key;
+      const providerName = this.config.routing.fast_path.provider || "groq";
+      const provider = this.config.providers[providerName as keyof typeof this.config.providers];
+      if (!provider) {
+        throw new Error(`Unsupported provider: ${providerName}`);
+      }
+      const apiKey = provider.api_key;
+      const apiBase = provider.api_base;
       if (!apiKey) {
-        throw new Error("Missing Groq API Key");
+        throw new Error(`Missing API Key for provider: ${providerName}`);
       }
 
       let systemPrompt = "";
@@ -25,17 +32,19 @@ export class SwarmWorker {
         case "researcher":
           systemPrompt = `You are a researcher worker agent in a PandaClaw swarm.
 Your goal is to gather facts, search the web, read files, or analyze data.
-Stay factual. Focus purely on gathering accurate details.`;
+You have tools to read files, search the web, and fetch URLs.
+Solve the task step-by-step using your tools.`;
           break;
         case "coder":
           systemPrompt = `You are a coding specialist worker agent in a PandaClaw swarm.
 Your goal is to implement, edit, or create files, and write logic.
-Output precise code modifications. Follow instructions exactly.`;
+You have tools to write files, read files, and execute code.
+Solve the task by making necessary file writes.`;
           break;
         case "verifier":
           systemPrompt = `You are a verification specialist worker agent in a PandaClaw swarm.
 Your goal is to check correctness, sanity check files, run tests, and critique outputs.
-Output VERDICT: PASS or list structural faults.`;
+You have tools to read files, write files, and execute tests.`;
           break;
         case "visualizer":
           systemPrompt = `You are a visual design worker agent in a PandaClaw swarm.
@@ -43,50 +52,93 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
           break;
       }
 
-      // Check if task description asks for specific tools
-      let toolToRun: string | null = null;
-      let toolArgs: Record<string, unknown> = {};
-
-      const descLower = task.description.toLowerCase();
-
-      if (descLower.includes("web_search") || (descLower.includes("search for") && !descLower.includes("file"))) {
-        toolToRun = "web_search";
-        const qMatch = task.description.match(/query:\s*"([^"]+)"/i) || task.description.match(/search for\s*(.+)/i);
-        toolArgs = { query: qMatch && qMatch[1] ? qMatch[1].trim() : task.description };
-      } else if (descLower.includes("file_read") || descLower.includes("read file")) {
-        toolToRun = "file_read";
-        const pathMatch = task.description.match(/path:\s*"([^"]+)"/i) || task.description.match(/file:\s*"([^"]+)"/i) || task.description.match(/read\s+([^\s]+)/i);
-        toolArgs = { path: pathMatch && pathMatch[1] ? pathMatch[1].trim() : "" };
-      } else if (descLower.includes("file_write") || descLower.includes("write file")) {
-        toolToRun = "file_write";
-        const pathMatch = task.description.match(/path:\s*"([^"]+)"/i) || task.description.match(/file:\s*"([^"]+)"/i);
-        const contentMatch = task.description.match(/content:\s*"([\s\S]+)"/i);
-        toolArgs = {
-          path: pathMatch && pathMatch[1] ? pathMatch[1].trim() : "",
-          content: contentMatch && contentMatch[1] ? contentMatch[1] : "",
-        };
-      } else if (descLower.includes("code_exec") || descLower.includes("execute code")) {
-        toolToRun = "code_exec";
-        const codeMatch = task.description.match(/code:\s*"([\s\S]+)"/i) || task.description.match(/run:\s*([\s\S]+)/i);
-        toolArgs = { code: codeMatch && codeMatch[1] ? codeMatch[1].trim() : "" };
-      }
-
-      if (toolToRun) {
-        const toolCtx = {
-          channel: "cli" as const,
-          workspacePath: context.workspacePath,
-          requestConsent: async () => true, // Auto consent in automated swarm worker execution
-        };
-        const runRes = await runTool(toolToRun, toolArgs, toolCtx);
-        if (runRes.success) {
-          task.status = "completed";
-          task.result = typeof runRes.data === "string" ? runRes.data : JSON.stringify(runRes.data, null, 2);
-        } else {
-          task.status = "failed";
-          task.error = runRes.error;
+      // Define standard tool schemas for OpenAI/Groq function calling
+      const apiTools = [
+        {
+          type: "function",
+          function: {
+            name: "web_search",
+            description: "Search the web for current information about a topic",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string", description: "The search query" }
+              },
+              required: ["query"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "web_fetch",
+            description: "Fetch web content of a URL and strip HTML tags",
+            parameters: {
+              type: "object",
+              properties: {
+                url: { type: "string", description: "Target URL to fetch" }
+              },
+              required: ["url"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "file_read",
+            description: "Read the content of a file in the workspace",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "Relative file path from workspace root" }
+              },
+              required: ["path"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "file_write",
+            description: "Write or overwrite content of a file at a specific path",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "Relative path of the target file" },
+                content: { type: "string", description: "Full content string to write" }
+              },
+              required: ["path", "content"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "code_exec",
+            description: "Execute TypeScript/JavaScript code in a sandboxed file",
+            parameters: {
+              type: "object",
+              properties: {
+                code: { type: "string", description: "The TS/JS code to run" },
+                timeout: { type: "number", description: "Optional execution timeout in ms" }
+              },
+              required: ["code"]
+            }
+          }
         }
-      } else {
-        const res = await fetch(`${this.config.providers.groq.api_base}/chat/completions`, {
+      ];
+
+      // Swarm multi-turn loop
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Context: ${JSON.stringify(context.history)}\nTask: ${task.description}\nInput: ${task.input ?? ""}` }
+      ];
+
+      let turns = 0;
+      const maxTurns = 5;
+
+      while (turns < maxTurns) {
+        const res = await fetch(`${apiBase}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -94,19 +146,60 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
           },
           body: JSON.stringify({
             model: this.config.routing.fast_path.model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: `Context: ${JSON.stringify(context.history)}\nTask: ${task.description}\nInput: ${task.input ?? ""}` },
-            ],
-            max_tokens: 1024,
-            temperature: 0.2,
+            messages,
+            tools: apiTools,
+            tool_choice: "auto",
+            temperature: 0.1,
           }),
         });
 
-        if (!res.ok) throw new Error(`Groq API returned ${res.status}`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`LLM Provider ${providerName} returned status ${res.status}: ${errText}`);
+        }
+
         const data = (await res.json()) as any;
-        task.result = data.choices[0]?.message?.content ?? "";
+        const msg = data.choices[0]?.message;
+        if (!msg) throw new Error("No response message from LLM");
+
+        messages.push(msg);
+
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          for (const tc of msg.tool_calls) {
+            const toolName = tc.function.name;
+            const toolArgs = JSON.parse(tc.function.arguments);
+
+            console.log(chalk.gray(`      Executing tool [${toolName}] for task [${task.name}]...`));
+
+            const toolCtx = {
+              channel: "cli" as const,
+              workspacePath: context.workspacePath,
+              requestConsent: async () => true, // Auto consent in automated swarm worker execution
+            };
+
+            const runRes = await runTool(toolName, toolArgs, toolCtx);
+            const toolOutput = runRes.success
+              ? (typeof runRes.data === "string" ? runRes.data : JSON.stringify(runRes.data))
+              : `Error: ${runRes.error}`;
+
+            messages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              name: toolName,
+              content: toolOutput,
+            });
+          }
+          turns++;
+        } else {
+          task.result = msg.content || "Completed task.";
+          task.status = "completed";
+          break;
+        }
+      }
+
+      if (task.status === "in_progress") {
         task.status = "completed";
+        task.result = messages[messages.length - 1].content || "Completed task after max turns.";
       }
     } catch (err: any) {
       task.status = "failed";

@@ -18,9 +18,15 @@ export class MemoryConsolidator {
       return "No entries to consolidate.";
     }
 
-    const apiKey = config.providers.groq.api_key;
+    const providerName = config.routing.fast_path.provider || "groq";
+    const provider = config.providers[providerName as keyof typeof config.providers];
+    if (!provider) {
+      return `Unsupported provider: ${providerName}`;
+    }
+    const apiKey = provider.api_key;
+    const apiBase = provider.api_base;
     if (!apiKey) {
-      return "Groq key missing, cannot consolidate memory.";
+      return `API key missing for provider ${providerName}, cannot consolidate memory.`;
     }
 
     // Compile entries list
@@ -41,7 +47,7 @@ ${logSummary}
 Format the output strictly as a clean Markdown document with ## headers for each category. Keep it concise.`;
 
     try {
-      const res = await fetch(`${config.providers.groq.api_base}/chat/completions`, {
+      const res = await fetch(`${apiBase}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -55,7 +61,10 @@ Format the output strictly as a clean Markdown document with ## headers for each
         }),
       });
 
-      if (!res.ok) throw new Error("API call failed");
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`LLM Provider ${providerName} returned status ${res.status}: ${errText}`);
+      }
 
       const data = (await res.json()) as any;
       const graph = data.choices[0]?.message?.content ?? "";

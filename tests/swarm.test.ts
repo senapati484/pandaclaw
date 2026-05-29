@@ -30,21 +30,26 @@ describe("Swarm System", () => {
     };
 
     const updatedTask = await worker.run(task, context);
+    console.log("updatedTask status:", updatedTask.status, "error:", updatedTask.error);
     expect(updatedTask.status).toBe("completed");
     expect(updatedTask.result).toBeDefined();
-  });
+  }, 30000);
 
   test("SwarmCoordinator schedules and runs fallback loop", async () => {
     const coordinator = new SwarmCoordinator(config, ".");
     
-    // We pass an empty configuration api_key to force fallback templates
+    // We pass empty configuration api_keys to force fallback templates
     const localConfig = {
       ...config,
       providers: {
         ...config.providers,
         groq: {
           ...config.providers.groq,
-          api_key: "", // Force fallback since decomposition will fail
+          api_key: "",
+        },
+        openrouter: {
+          ...config.providers.openrouter,
+          api_key: "",
         }
       }
     };

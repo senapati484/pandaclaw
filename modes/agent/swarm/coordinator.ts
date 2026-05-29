@@ -105,8 +105,14 @@ export class SwarmCoordinator {
   }
 
   private async decomposeGoal(goals: string): Promise<SwarmTask[]> {
-    const apiKey = this.config.providers.groq.api_key;
-    if (!apiKey) throw new Error("No API key");
+    const providerName = this.config.routing.fast_path.provider || "groq";
+    const provider = this.config.providers[providerName as keyof typeof this.config.providers];
+    if (!provider) {
+      throw new Error(`Unsupported provider: ${providerName}`);
+    }
+    const apiKey = provider.api_key;
+    const apiBase = provider.api_base;
+    if (!apiKey) throw new Error(`No API key for provider ${providerName}`);
 
     const prompt = `Goal: "${goals}"
 
@@ -129,7 +135,7 @@ Output a JSON array of tasks matching this schema:
 ]
 Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
 
-    const res = await fetch(`${this.config.providers.groq.api_base}/chat/completions`, {
+    const res = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -143,7 +149,10 @@ Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
       }),
     });
 
-    if (!res.ok) throw new Error("LLM decomposition failed");
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`LLM decomposition failed for provider ${providerName} (status ${res.status}): ${errText}`);
+    }
     const data = (await res.json()) as any;
     let content = data.choices[0]?.message?.content ?? "";
     content = content.replace(/```json/i, "").replace(/```/g, "").trim();
@@ -156,7 +165,13 @@ Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
   }
 
   private async synthesizeSummary(goals: string, tasks: SwarmTask[]): Promise<string> {
-    const apiKey = this.config.providers.groq.api_key;
+    const providerName = this.config.routing.fast_path.provider || "groq";
+    const provider = this.config.providers[providerName as keyof typeof this.config.providers];
+    if (!provider) {
+      return tasks.map(t => `${t.name}: ${t.status}`).join("\n");
+    }
+    const apiKey = provider.api_key;
+    const apiBase = provider.api_base;
     if (!apiKey) {
       return tasks.map(t => `${t.name}: ${t.status}`).join("\n");
     }
@@ -173,7 +188,7 @@ ${taskStates}
 Synthesize a final unified response summarizing the final outcome.`;
 
     try {
-      const res = await fetch(`${this.config.providers.groq.api_base}/chat/completions`, {
+      const res = await fetch(`${apiBase}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

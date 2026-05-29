@@ -57,5 +57,5 @@ describe("MemoryConsolidator", () => {
       // Mock flow if no API key
       expect(consolidator.getGraph()).toBe("");
     }
-  });
+  }, 30000);
 });

@@ -15,9 +15,9 @@
   },
   "routing": {
     "fast_path": {
-      "provider": "groq",
-      "model": "llama-3.3-70b-versatile",
-      "temperature": 0.3,
+      "provider": "openrouter",
+      "model": "openrouter/free",
+      "temperature": 0.1,
       "maxTokens": 2048
     },
     "panda_mode": {
