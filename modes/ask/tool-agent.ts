@@ -1,7 +1,9 @@
 // modes/ask/tool-agent.ts
 // Agentic LLM loop with real tool use (file_read, file_write, list_dir, code_exec, web_search)
-// Used by the Telegram gateway so the bot can actually touch files on the host machine.
+// All paths are resolved dynamically — no hardcoded usernames or device paths.
 
+import os from "os";
+import path from "path";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
@@ -89,29 +91,52 @@ const TOOL_SCHEMAS = [
   },
 ];
 
-const SYSTEM_PROMPT = `You are PandaClaw, a powerful AI agent running locally on the user's Mac.
+/** Build the system prompt dynamically from the current device's OS info — no hardcoding. */
+function buildSystemPrompt(): string {
+  const home     = os.homedir();                        // e.g. /Users/sayansenapati  or  /home/ubuntu
+  const username = os.userInfo().username;              // e.g. sayansenapati
+  const platform = os.platform();                       // darwin | linux | win32
+  const hostname = os.hostname();                       // e.g. Sayans-MacBook-Air
+  const cwd      = process.cwd();                       // pandaclaw working dir
+
+  // Common locations that exist on this specific machine
+  const desktop   = path.join(home, "Desktop");
+  const downloads = path.join(home, "Downloads");
+  const documents = path.join(home, "Documents");
+
+  const platformNote =
+    platform === "win32"
+      ? `This is a Windows machine. Use Windows-style paths (e.g. C:\\Users\\${username}\\Desktop).`
+      : `This is a ${platform === "darwin" ? "macOS" : "Linux"} machine.`;
+
+  return `You are PandaClaw, a powerful AI agent running locally on ${hostname}.
 You have FULL, UNRESTRICTED access to the ENTIRE device — every file, folder, and command.
 
-The device root is /. The user's home is /Users/sayansenapati.
-Common locations:
-  Desktop   → /Users/sayansenapati/Desktop
-  Downloads → /Users/sayansenapati/Downloads
-  Documents → /Users/sayansenapati/Documents
-  Dev projects → /Users/sayansenapati/Desktop/Dev
+${platformNote}
+Username : ${username}
+Home dir : ${home}
+CWD      : ${cwd}
 
-Your tools work with ANY absolute path on the device:
-  file_read  → read any file anywhere
-  file_write → create or edit any file anywhere (auto-creates folders)
-  list_dir   → browse any folder (use absolute paths like /Users/sayansenapati/Desktop)
+Common locations on this device:
+  Desktop   → ${desktop}
+  Downloads → ${downloads}
+  Documents → ${documents}
+  Pandaclaw → ${cwd}
+
+Your tools work with ANY path on this device:
+  file_read  → read any file anywhere (use absolute paths)
+  file_write → create or edit any file anywhere (auto-creates parent dirs)
+  list_dir   → browse any folder — pass absolute path like ${home}
   code_exec  → run any shell command with full system access
   web_search → search the internet
 
 RULES:
 - NEVER say "I can't access files" — you ALWAYS can via your tools.
 - ALWAYS use tools for file/folder tasks. Never just describe how to do it.
-- For file_write with "append", first file_read the file, then file_write the full new content.
-- When listing dirs, prefer absolute paths starting with /Users/sayansenapati or /.
-- After every tool action, confirm what you did in 1-2 sentences.`;
+- For "append" requests: file_read first, then file_write the combined content.
+- Always use ABSOLUTE paths (starting with ${platform === "win32" ? "C:\\" : "/"}).
+- After every tool action confirm what you did in 1-2 sentences.`;
+}
 
 // ── Call the LLM with tool schemas ────────────────────────────────────────
 async function callWithTools(
@@ -196,7 +221,7 @@ export async function runToolAgent(
   const toolsUsed: string[] = [];
 
   const messages: any[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt() },  // built fresh per-call
     { role: "user", content: userMessage },
   ];
 
