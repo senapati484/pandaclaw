@@ -90,6 +90,20 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
         {
           type: "function",
           function: {
+            name: "list_dir",
+            description: "List the files and directories in the workspace (recursively or not)",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "Relative directory path (default: .)" },
+                recursive: { type: "boolean", description: "Whether to list subdirectories recursively (default: false)" }
+              }
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
             name: "file_write",
             description: "Write or overwrite content of a file at a specific path",
             parameters: {

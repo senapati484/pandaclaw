@@ -5,7 +5,7 @@ import type { ToolDefinition, ToolContext } from "../modes/agent/types.js";
 import { webSearchTool } from "./web-search.js";
 import { webFetchTool } from "./web-fetch.js";
 import { codeExecTool } from "./code-exec.js";
-import { fileReadTool, fileWriteTool } from "./file-tools.js";
+import { fileReadTool, fileWriteTool, listDirTool } from "./file-tools.js";
 
 export const TOOLS: Record<string, ToolDefinition> = {
   web_search: webSearchTool,
@@ -13,6 +13,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
   code_exec:  codeExecTool,
   file_read:  fileReadTool,
   file_write: fileWriteTool,
+  list_dir:   listDirTool,
 };
 
 export interface ToolRunResult {
