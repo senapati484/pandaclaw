@@ -297,6 +297,87 @@ export class AgentOrchestrator {
   }
 }
 
+const stripAnsi = (str: string) => str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
+
+function wrapLine(line: string, width: number): string[] {
+  if (line.startsWith("─")) {
+    return [line];
+  }
+  const stripped = stripAnsi(line);
+  if (stripped.length <= width) {
+    return [line];
+  }
+
+  const match = line.match(/^(\s*)/);
+  const indent = match ? match[1] : "";
+
+  // Split line by spaces while preserving ANSI sequences
+  const tokens = line.trim().match(/(\x1B\[[0-9;]*[a-zA-Z]|[^\s\x1B]+)+/g) || [];
+  
+  const wrappedLines: string[] = [];
+  let currentLine = indent;
+
+  for (const token of tokens) {
+    const currentLength = stripAnsi(currentLine).length;
+    const tokenLength = stripAnsi(token).length;
+
+    if (currentLine === indent) {
+      currentLine += token;
+    } else if (currentLength + 1 + tokenLength <= width) {
+      currentLine += " " + token;
+    } else {
+      wrappedLines.push(currentLine);
+      currentLine = indent + "  " + token; // indent wrapped parts slightly more
+    }
+  }
+
+  if (currentLine !== indent) {
+    wrappedLines.push(currentLine);
+  }
+
+  return wrappedLines.length > 0 ? wrappedLines : [line];
+}
+
+function drawBox(title: string, lines: string[], themeColor: (str: string) => string): void {
+  const innerWidth = 76;
+  const borderTop = themeColor("╭" + "─".repeat(innerWidth + 2) + "╮");
+  const borderBottom = themeColor("╰" + "─".repeat(innerWidth + 2) + "╯");
+  const divider = themeColor("├" + "─".repeat(innerWidth + 2) + "┤");
+
+  // Format title line with padding
+  const titleStr = ` ${title} `;
+  const visibleTitleLen = stripAnsi(titleStr).length;
+  const titlePadding = Math.max(0, innerWidth - visibleTitleLen);
+  const titleLine = themeColor("│ ") + chalk.bold.hex('#e8dcf8')(titleStr) + " ".repeat(titlePadding) + themeColor(" │");
+
+  console.log(borderTop);
+  console.log(titleLine);
+  console.log(divider);
+
+  const flatLines: string[] = [];
+  for (const line of lines) {
+    if (line.includes("\n")) {
+      flatLines.push(...line.split("\n"));
+    } else {
+      flatLines.push(line);
+    }
+  }
+
+  for (const line of flatLines) {
+    if (line === "─" || line.startsWith("─")) {
+      console.log(divider);
+      continue;
+    }
+    const wrapped = wrapLine(line, innerWidth);
+    for (const wLine of wrapped) {
+      const visibleLength = stripAnsi(wLine).length;
+      const padding = Math.max(0, innerWidth - visibleLength);
+      console.log(themeColor("│ ") + wLine + " ".repeat(padding) + themeColor(" │"));
+    }
+  }
+  console.log(borderBottom);
+}
+
 import { SwarmCoordinator } from "./swarm/coordinator.js";
 import { readConfig } from "../../ai/ai.config.js";
 
@@ -330,31 +411,31 @@ export async function runAgentMode(): Promise<void> {
   
   const result = await coordinator.runSwarm(goal.trim());
 
-  console.log(chalk.cyan("\n🐝 Swarm Execution Log:\n"));
+  const purpleTheme = chalk.hex('#5b4d9e');
+
+  // Build Swarm Execution Log Box
+  const executionLines: string[] = [];
   for (const t of result.tasks) {
     const statusColor = t.status === "completed" ? chalk.green : t.status === "failed" ? chalk.red : chalk.yellow;
-    console.log(`  [${statusColor(t.status.toUpperCase())}] ${chalk.bold(t.name)} (${t.workerType})`);
-    console.log(chalk.gray(`      Desc: ${t.description}`));
+    const icon = t.workerType === "researcher" ? "🔍" : t.workerType === "coder" ? "💻" : t.workerType === "verifier" ? "🛡️" : "🎨";
+    executionLines.push(`● [${statusColor(t.status.toUpperCase())}] ${chalk.bold(t.name)} (${icon} ${t.workerType})`);
+    executionLines.push(`  → Desc: ${chalk.dim(t.description)}`);
     if (t.result) {
-      const summaryText = t.result.length > 120 ? t.result.slice(0, 120) + "..." : t.result;
-      console.log(chalk.gray(`      Result: ${summaryText}`));
+      const summaryText = t.result.length > 60 ? t.result.slice(0, 60) + "..." : t.result;
+      executionLines.push(`  ✔ Result: ${chalk.gray(summaryText)}`);
     }
     if (t.error) {
-      console.log(chalk.red(`      Error: ${t.error}`));
+      executionLines.push(`  ✖ Error: ${chalk.red(t.error)}`);
     }
+    executionLines.push("");
   }
+  if (executionLines.length > 0) executionLines.pop(); // remove trailing spacing
 
-  console.log(chalk.cyan("\n🐼 Swarm Synthesis Summary:\n"));
-  
-  const fullResult = result.result;
-  const lines = fullResult.split("\n");
-  const shortSummary = lines.slice(0, 3).join("\n");
-  console.log(shortSummary);
-  if (lines.length > 3) {
-    console.log(chalk.gray("\n      ... (additional details omitted for clarity)"));
-  }
+  console.log("");
+  drawBox("🐝 SWARM EXECUTION LOG", executionLines, purpleTheme);
 
   // Write full log to workspace file
+  const fullResult = result.result;
   const fs = await import("fs");
   const path = await import("path");
   const logDir = path.join(process.cwd(), ".pandaclaw");
@@ -362,20 +443,20 @@ export async function runAgentMode(): Promise<void> {
   try {
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
     fs.writeFileSync(logPath, fullResult, "utf8");
-    console.log(chalk.dim(`\n📝 Full detailed log saved to: .pandaclaw/latest_swarm_run.md`));
   } catch {}
 
-  console.log("");
-  const showFull = await confirm({
-    message: "Would you like to print the full detailed response in the terminal?",
-    initialValue: false,
-  });
-
-  if (showFull && !isCancel(showFull)) {
-    console.log(chalk.cyan("\n--- Full Swarm Output ---"));
-    console.log(fullResult);
-    console.log(chalk.cyan("-------------------------"));
+  // Build Swarm Synthesis Summary Box
+  const synthesisLines: string[] = [];
+  const resLines = fullResult.split("\n");
+  for (const line of resLines) {
+    synthesisLines.push(line);
   }
 
-  console.log(chalk.cyan("\nThanks for using Swarm Agent Mode! 🐼\n"));
+  synthesisLines.push("─");
+  synthesisLines.push(`📝 Full detailed log saved to: ${chalk.bold.underline(".pandaclaw/latest_swarm_run.md")}`);
+
+  console.log("");
+  drawBox("🐼 SWARM SYNTHESIS SUMMARY", synthesisLines, purpleTheme);
+
+  console.log(purpleTheme("\nThanks for using Swarm Agent Mode! 🐼\n"));
 }
