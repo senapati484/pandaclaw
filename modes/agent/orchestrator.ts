@@ -297,11 +297,14 @@ export class AgentOrchestrator {
   }
 }
 
+import { SwarmCoordinator } from "./swarm/coordinator.js";
+import { readConfig } from "../../ai/ai.config.js";
+
 /**
- * Run the full agent mode flow
+ * Run the full agent mode flow using the Swarm Coordinator
  */
 export async function runAgentMode(): Promise<void> {
-  console.log(chalk.cyan("\n🐼 Welcome to Agent Mode!\n"));
+  console.log(chalk.cyan("\n🐼 Welcome to Swarm Agent Mode!\n"));
 
   const goal = await text({
     message: "What is your goal?",
@@ -313,11 +316,35 @@ export async function runAgentMode(): Promise<void> {
     return;
   }
 
-  const orchestrator = new AgentOrchestrator();
+  let config;
+  try {
+    config = readConfig();
+  } catch (err: any) {
+    console.log(chalk.red(`Config error: ${err.message}`));
+    return;
+  }
 
-  // Initialize and run session
-  await orchestrator.initializeSession(goal.trim());
-  await orchestrator.runReactorLoop();
+  const coordinator = new SwarmCoordinator(config, process.cwd());
 
-  console.log(chalk.cyan("Thanks for using Agent Mode! 🐼\n"));
+  console.log(chalk.gray("\nDecomposing goal into specialized swarm tasks..."));
+  
+  const result = await coordinator.runSwarm(goal.trim());
+
+  console.log(chalk.cyan("\n🐝 Swarm Execution Log:\n"));
+  for (const t of result.tasks) {
+    const statusColor = t.status === "completed" ? chalk.green : t.status === "failed" ? chalk.red : chalk.yellow;
+    console.log(`  [${statusColor(t.status.toUpperCase())}] ${chalk.bold(t.name)} (${t.workerType})`);
+    console.log(chalk.gray(`      Desc: ${t.description}`));
+    if (t.result) {
+      const summaryText = t.result.length > 120 ? t.result.slice(0, 120) + "..." : t.result;
+      console.log(chalk.gray(`      Result: ${summaryText}`));
+    }
+    if (t.error) {
+      console.log(chalk.red(`      Error: ${t.error}`));
+    }
+  }
+
+  console.log(chalk.cyan("\n🐼 Swarm Synthesis Output:\n"));
+  console.log(result.result);
+  console.log(chalk.cyan("\nThanks for using Swarm Agent Mode! 🐼\n"));
 }
