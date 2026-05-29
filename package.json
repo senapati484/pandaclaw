@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run index.ts wakeup",
+    "dev": "bun run index.ts",
     "dashboard": "bun run canvas/server.ts"
   },
   "bin": {
