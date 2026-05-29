@@ -1,14 +1,12 @@
 import { readConfig } from "../../ai/ai.config.js";
 import { saveToMemory } from "../../memory/store.js";
-import { classifyTask } from "../ask/classifier.js";
-import { runFastPath } from "../ask/fast-path.js";
-import { runPandaMode } from "../ask/panda-mode.js";
 import { runVisionPipeline } from "../../vision/index.js";
 import type { ChannelAdapter, ChannelMessage } from "./adapter.js";
 import { TelegramAdapter } from "./adapters/telegram.js";
 import { SlackAdapter } from "./adapters/slack.js";
 import { WebChatAdapter } from "./adapters/webchat.js";
-import type { AskTask } from "../../modes/agent/types.js";
+import type { ToolContext } from "../../modes/agent/types.js";
+import { runToolAgent } from "../ask/tool-agent.js";
 import chalk from "chalk";
 
 export class Gateway {
@@ -55,29 +53,19 @@ export class Gateway {
   private async routeMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
     const chatId = msg.chatId;
 
+    // ── Photo → Vision pipeline ──────────────────────────────────────────
     if (msg.photoBuffer && msg.mimeType) {
       try {
         const result = await runVisionPipeline(msg.photoBuffer, msg.mimeType, msg.text ?? "Describe this image");
         let reply = `🐼 *Vision Analysis*\n_Type: ${result.contentType}_\n\n`;
 
         switch (result.action.type) {
-          case "describe":
-            reply += result.action.summary;
-            break;
-          case "diagnose":
-            reply += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`;
-            break;
-          case "navigate":
-            reply += result.action.instruction;
-            break;
-          case "code_review":
-            reply += result.action.findings.map((f) => `• ${f.message}`).join("\n");
-            break;
-          case "extract":
-            reply += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```";
-            break;
-          default:
-            reply += JSON.stringify(result.action);
+          case "describe":   reply += result.action.summary; break;
+          case "diagnose":   reply += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`; break;
+          case "navigate":   reply += result.action.instruction; break;
+          case "code_review": reply += result.action.findings.map((f) => `• ${f.message}`).join("\n"); break;
+          case "extract":    reply += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```"; break;
+          default:           reply += JSON.stringify(result.action);
         }
 
         await adapter.sendMessage(chatId, reply);
@@ -87,63 +75,103 @@ export class Gateway {
       return;
     }
 
+    // ── Text → Agentic tool loop ─────────────────────────────────────────
     if (msg.text) {
       const userText = msg.text;
 
-      if (userText === "/start" || userText === "/help") {
+      // /start and /help commands
+      if (userText === "/start") {
         await adapter.sendMessage(
           chatId,
-          `🐼 *PandaClaw v3 is online!*\n\n` +
-            `• Simple questions → fast-path\n` +
-            `• Complex logic → deep-reasoning (panda-mode)\n` +
-            `• Send photo → visual-native analysis\n` +
-            `• Web interface → local interactive canvas`
+          `🐼 *PandaClaw Agent is online!*\n\n` +
+            `I have *direct access* to your local machine:\n` +
+            `• 📁 Read \& write files\n` +
+            `• 📂 List directories\n` +
+            `• ⚡ Run code \& commands\n` +
+            `• 🔍 Search the web\n` +
+            `• 👁 Analyze images\n\n` +
+            `Just tell me what to do — I'll do it!`
         );
         return;
       }
 
+      if (userText === "/help") {
+        await adapter.sendMessage(
+          chatId,
+          `🐼 *PandaClaw Help*\n\n` +
+            `*File operations:*\n` +
+            `  "read testing.txt"\n` +
+            `  "write my name to notes.txt"\n` +
+            `  "list all files in the project"\n\n` +
+            `*Run commands:*\n` +
+            `  "run: ls -la"\n` +
+            `  "execute: echo hello world"\n\n` +
+            `*Search:*\n` +
+            `  "search for how to use Bun"\n\n` +
+            `*Vision:*\n` +
+            `  Send any photo for AI analysis\n\n` +
+            `*/start* - restart\n` +
+            `*/status* - show machine info`
+        );
+        return;
+      }
+
+      if (userText === "/status") {
+        const cwd = process.cwd();
+        await adapter.sendMessage(
+          chatId,
+          `🐼 *PandaClaw Status*\n\n` +
+            `• Workspace: \`${cwd}\`\n` +
+            `• Groq: ${this.config.providers.groq.api_key ? "✅" : "❌"}\n` +
+            `• OpenRouter: ${this.config.providers.openrouter.api_key ? "✅" : "❌"}\n` +
+            `• Nvidia NIM: ${this.config.providers.nvidia_nim.api_key ? "✅" : "❌"}\n` +
+            `• Telegram: ✅ connected`
+        );
+        return;
+      }
+
+      // ── Build a ToolContext for this Telegram user ────────────────────
+      const toolCtx: ToolContext = {
+        userId: msg.senderId,
+        channel: "telegram",
+        workspacePath: process.cwd(),
+        // File writes and code exec auto-approved for the paired user
+        requestConsent: async (_tool: string, _preview: string) => true,
+      };
+
       try {
-        const taskType = classifyTask(userText);
-        const task: AskTask = {
-          id: crypto.randomUUID(),
-          type: taskType,
-          input: userText,
-          conversationHistory: [],
-          createdAt: new Date(),
-        };
+        // Log to console
+        console.log(chalk.hex("#5b4d9e")(`\n🐼 [Telegram] ${msg.senderName}: ${userText.slice(0, 80)}`));
 
-        const result =
-          taskType === "complex"
-            ? await runPandaMode(task, this.config)
-            : await runFastPath(task, this.config);
+        const result = await runToolAgent(userText, this.config, toolCtx);
 
-        const footer =
-          taskType === "complex"
-            ? `\n\n_🐼 panda mode · ${result.durationMs}ms${result.verified ? " · verified ✓" : ""}_`
-            : `\n\n_⚡ fast · ${result.durationMs}ms_`;
+        const toolBadge =
+          result.toolsUsed.length > 0
+            ? `\n\n_🔧 tools: ${result.toolsUsed.join(", ")} · ${result.durationMs}ms_`
+            : `\n\n_⚡ ${result.durationMs}ms_`;
 
-        await adapter.sendMessage(chatId, result.answer + footer);
+        await adapter.sendMessage(chatId, result.answer + toolBadge);
 
+        // Persist to memory
         try {
           saveToMemory({
-            id: task.id,
+            id: crypto.randomUUID(),
             timestamp: Date.now(),
             role: "user",
             content: userText,
-            importance: taskType === "complex" ? "high" : "low",
+            importance: result.toolsUsed.length > 0 ? "high" : "low",
           });
         } catch {}
+
       } catch (err: any) {
-        // Format a clean user-friendly error
         const raw: string = err.message ?? "";
         let friendly = "❌ Something went wrong. Please try again.";
         if (raw.includes("429") || raw.toLowerCase().includes("rate limit")) {
-          friendly = "⏳ *Rate limit hit* — all AI providers are temporarily busy. Please wait a moment and try again.";
-        } else if (raw.includes("401") || raw.toLowerCase().includes("unauthorized")) {
-          friendly = "🔑 *API key error* — please check your config.json keys with `pandaclaw setup`.";
-        } else if (raw.includes("All LLM providers failed")) {
-          friendly = "🌐 *All AI providers are unreachable.* Check your internet connection or API keys.";
+          friendly = "⏳ *Rate limit hit* — AI providers are busy. Please wait a moment!";
+        } else if (raw.includes("All providers failed")) {
+          friendly = "🌐 *All AI providers unreachable.* Check your internet or API keys.";
         }
+        console.error(chalk.red(`[Gateway error] ${raw}`));
         await adapter.sendMessage(chatId, friendly);
       }
     }
