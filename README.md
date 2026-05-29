@@ -1,5 +1,8 @@
 # 🐼 PandaClaw
 
+<img width="1594" height="329" alt="pandaclaw" src="https://github.com/user-attachments/assets/c7945125-8f33-435a-9913-aafaf1113351" />
+
+
 > *Slow is smooth. Smooth is perfect.*
 
 PandaClaw is a **reasoning-first agentic CLI** built with TypeScript and Bun. It plans before it acts, asks before it mutates, and learns from every session. Point it at a goal and watch it break the work down, validate each step, and reflect on what it did.
