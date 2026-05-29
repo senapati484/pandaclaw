@@ -79,7 +79,7 @@ Put your reasoning in <think>...</think> tags, then give your final answer.`,
     ? rawResponse.split("</think>").slice(1).join("</think>").trim()
     : rawResponse.trim();
 
-  // ── STEP 2: VERIFY — Groq fast second opinion ──
+  // ── STEP 2: VERIFY — Groq fast second opinion (best-effort, skipped if rate-limited) ──
   let verified = false;
   let verifiedAnswer = finalAnswer;
 
@@ -109,10 +109,13 @@ FIXED: <corrected answer>   — if something is missing or wrong`;
         }),
       });
 
-      const verifyData = (await verifyRes.json()) as LLMResponse;
-      const verdict = verifyData.choices[0]?.message?.content ?? "";
-      verified = verdict.startsWith("PASS");
-      verifiedAnswer = verified ? finalAnswer : verdict.replace(/^FIXED:\s*/i, "").trim();
+      if (verifyRes.ok) {
+        const verifyData = (await verifyRes.json()) as LLMResponse;
+        const verdict = verifyData.choices[0]?.message?.content ?? "";
+        verified = verdict.startsWith("PASS");
+        verifiedAnswer = verified ? finalAnswer : verdict.replace(/^FIXED:\s*/i, "").trim();
+      }
+      // If Groq returns 429/non-ok, just skip verification — answer stands as-is
     } catch {
       // Verification failed — use original answer
     }

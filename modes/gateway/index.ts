@@ -134,7 +134,17 @@ export class Gateway {
           });
         } catch {}
       } catch (err: any) {
-        await adapter.sendMessage(chatId, `❌ Error: ${err.message}`);
+        // Format a clean user-friendly error
+        const raw: string = err.message ?? "";
+        let friendly = "❌ Something went wrong. Please try again.";
+        if (raw.includes("429") || raw.toLowerCase().includes("rate limit")) {
+          friendly = "⏳ *Rate limit hit* — all AI providers are temporarily busy. Please wait a moment and try again.";
+        } else if (raw.includes("401") || raw.toLowerCase().includes("unauthorized")) {
+          friendly = "🔑 *API key error* — please check your config.json keys with `pandaclaw setup`.";
+        } else if (raw.includes("All LLM providers failed")) {
+          friendly = "🌐 *All AI providers are unreachable.* Check your internet connection or API keys.";
+        }
+        await adapter.sendMessage(chatId, friendly);
       }
     }
   }

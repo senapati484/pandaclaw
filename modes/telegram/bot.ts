@@ -197,7 +197,13 @@ export async function runTelegramMode(): Promise<void> {
       if (thinkingMsgId) {
         await bot.deleteMessage(chatId, thinkingMsgId).catch(() => {});
       }
-      await bot.sendMessage(chatId, `❌ Error: ${errMsg}`);
+      let friendly = `❌ Error: ${errMsg}`;
+      if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate limit")) {
+        friendly = "⏳ *Rate limit hit* — AI providers are temporarily busy. Please wait a moment and try again!";
+      } else if (errMsg.includes("All LLM providers failed")) {
+        friendly = "🌐 *All AI providers are unreachable.* Check your internet or API keys in config.json.";
+      }
+      await bot.sendMessage(chatId, friendly, { parse_mode: "Markdown" });
     }
   });
 
