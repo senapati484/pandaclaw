@@ -1,7 +1,8 @@
 // tools/web-search.ts
-// Searches the web using Tavily API or DuckDuckGo instant answers as fallback
+// Searches the web using Tavily API or DuckDuckGo organic scrape as fallback
 
 import type { ToolDefinition } from "../modes/agent/types.js";
+import * as cheerio from "cheerio";
 
 interface TavilyResult {
   title: string;
@@ -11,12 +12,6 @@ interface TavilyResult {
 
 interface TavilyResponse {
   results: TavilyResult[];
-}
-
-interface DDGResponse {
-  Heading: string;
-  AbstractText: string;
-  AbstractURL: string;
 }
 
 interface SearchResult {
@@ -42,22 +37,48 @@ async function searchTavily(query: string, apiKey: string, maxResults: number): 
   }));
 }
 
-async function searchDuckDuckGo(query: string): Promise<SearchResult[]> {
-  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "PandaClaw/1.0" },
-  });
-  const data = (await res.json()) as DDGResponse;
-
-  const results: SearchResult[] = [];
-  if (data.AbstractText) {
-    results.push({
-      title: data.Heading || query,
-      url: data.AbstractURL || "",
-      snippet: data.AbstractText,
+async function searchDuckDuckGoScrape(query: string, maxResults: number): Promise<SearchResult[]> {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
     });
+
+    if (!res.ok) throw new Error(`DuckDuckGo Scrape ${res.status}`);
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const results: SearchResult[] = [];
+    $(".result").each((_, elem) => {
+      if (results.length >= maxResults) return;
+
+      const title = $(elem).find(".result__snippet").prev().text().trim();
+      let link = $(elem).find(".result__url").attr("href");
+      const snippet = $(elem).find(".result__snippet").text().trim();
+
+      if (title && link) {
+        if (link.startsWith("//")) {
+          link = "https:" + link;
+        }
+        try {
+          const urlObj = new URL(link);
+          const uddg = urlObj.searchParams.get("uddg");
+          if (uddg) {
+            link = decodeURIComponent(uddg);
+          }
+        } catch {}
+
+        results.push({ title, url: link, snippet });
+      }
+    });
+
+    return results;
+  } catch (err) {
+    return [];
   }
-  return results;
 }
 
 export const webSearchTool: ToolDefinition = {
@@ -77,10 +98,10 @@ export const webSearchTool: ToolDefinition = {
       try {
         return await searchTavily(query, apiKey, maxResults);
       } catch {
-        // Fall through to DuckDuckGo
+        // Fall through to DuckDuckGo Scrape
       }
     }
 
-    return await searchDuckDuckGo(query);
+    return await searchDuckDuckGoScrape(query, maxResults);
   },
 };
