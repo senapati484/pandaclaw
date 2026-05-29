@@ -309,7 +309,7 @@ function wrapLine(line: string, width: number): string[] {
   }
 
   const match = line.match(/^(\s*)/);
-  const indent = match ? match[1] : "";
+  const indent = (match && match[1]) || "";
 
   // Split line by spaces while preserving ANSI sequences
   const tokens = line.trim().match(/(\x1B\[[0-9;]*[a-zA-Z]|[^\s\x1B]+)+/g) || [];
@@ -318,6 +318,7 @@ function wrapLine(line: string, width: number): string[] {
   let currentLine = indent;
 
   for (const token of tokens) {
+    if (!token) continue;
     const currentLength = stripAnsi(currentLine).length;
     const tokenLength = stripAnsi(token).length;
 

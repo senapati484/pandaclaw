@@ -27,6 +27,15 @@ export interface PandaConfig {
   audit?:  { path: string; enabled: boolean };
   telegram?: { token: string; allowed_users: number[] };
   slack?: { webhook_url: string };
+  /** GitHub App credentials for pandaclawbot[bot] identity */
+  github?: {
+    app_id: string;           // 3905611
+    app_client_id: string;    // Iv23litqPgCUrnfX90U
+    installation_id: string;  // from github.com/settings/installations/XXXXX
+    pem_path: string;         // path to downloaded .pem file (default: .pandaclaw/github-app.pem)
+    bot_name: string;         // "pandaclawbot[bot]"
+    bot_email: string;        // "3905611+pandaclawbot[bot]@users.noreply.github.com"
+  };
   agent?: {
     maxIterations: number;
     autoExecutePaths: string[];
@@ -70,6 +79,21 @@ export function readConfig(): PandaConfig {
   const tgToken = process.env.TELEGRAM_TOKEN;
   if (tgToken)
     file.telegram = { ...(file.telegram ?? { token: "", allowed_users: [] }), token: tgToken };
+
+  // GitHub App — allow env var overrides for CI/CD environments
+  const ghAppId          = process.env.GITHUB_APP_ID;
+  const ghInstallationId = process.env.GITHUB_INSTALLATION_ID;
+  const ghPemPath        = process.env.GITHUB_PEM_PATH;
+  if (ghAppId || ghInstallationId || ghPemPath) {
+    file.github = {
+      app_id:          ghAppId          || file.github?.app_id          || "3905611",
+      app_client_id:   file.github?.app_client_id || "Iv23litqPgCUrnfX90U",
+      installation_id: ghInstallationId || file.github?.installation_id || "",
+      pem_path:        ghPemPath        || file.github?.pem_path        || ".pandaclaw/github-app.pem",
+      bot_name:        file.github?.bot_name  || "pandaclawbot[bot]",
+      bot_email:       file.github?.bot_email || "3905611+pandaclawbot[bot]@users.noreply.github.com",
+    };
+  }
 
   _config = file;
   return _config!;

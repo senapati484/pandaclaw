@@ -139,40 +139,52 @@ RULES:
 - After every tool action confirm what you did in 1-2 sentences.`;
 }
 
-// ── Providers that SUPPORT OpenAI function/tool calling ───────────────────
-// NIM is intentionally excluded — it 404s on the tools parameter.
-// OpenRouter: mistral-7b-instruct supports tool calling on the free tier.
-// Groq: llama3-groq-70b-8192-tool-use-preview is purpose-built for tool use.
+// ── Provider chain for tool calling ──────────────────────────────────────
+// Groq is primary — two dedicated tool-use models back to back.
+// If BOTH Groq models are rate-limited, fall to OpenRouter, then NIM (text only).
 const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
-    name: "groq",
+    // Groq 70B — best quality tool-use, purpose-built for function calling
+    name: "groq_70b",
     base: config.providers.groq.api_base,
-    key: config.providers.groq.api_key,
-    model: "llama3-groq-70b-8192-tool-use-preview",   // Groq's dedicated tool-use model
+    key:  config.providers.groq.api_key,
+    model: "llama3-groq-70b-8192-tool-use-preview",
     headers: {} as Record<string, string>,
     withTools: true,
   },
   {
+    // Groq 8B — faster, smaller, same tool-calling capability
+    // Hits a separate rate-limit bucket so it still works when 70B is throttled
+    name: "groq_8b",
+    base: config.providers.groq.api_base,
+    key:  config.providers.groq.api_key,
+    model: "llama3-groq-8b-8192-tool-use-preview",
+    headers: {} as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // OpenRouter fallback — free tier, supports function calling
     name: "openrouter",
     base: config.providers.openrouter.api_base,
-    key: config.providers.openrouter.api_key,
-    model: "mistralai/mistral-7b-instruct:free",       // Free tier, supports function calling
+    key:  config.providers.openrouter.api_key,
+    model: "mistralai/mistral-7b-instruct:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",
     } as Record<string, string>,
     withTools: true,
   },
-  // ── Plain-text fallback (NIM — no tool calling, just answer from context) ─
   {
+    // NIM last resort — plain text only, no tool calling (404s on tools param)
     name: "nvidia_nim",
     base: config.providers.nvidia_nim.api_base,
-    key: config.providers.nvidia_nim.api_key,
-    model: NIM_MODELS.chat_large,    // mistral-large-3-675b — best free NIM model
+    key:  config.providers.nvidia_nim.api_key,
+    model: NIM_MODELS.chat_large,  // mistral-large-3-675b — best free NIM model
     headers: {} as Record<string, string>,
-    withTools: false,   // ← NIM doesn't support tool calling; skip tools param
+    withTools: false,
   },
 ];
+
 
 async function callWithTools(
   config: PandaConfig,

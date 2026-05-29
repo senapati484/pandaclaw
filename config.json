@@ -106,5 +106,13 @@
       "package.json",
       "tsconfig.json"
     ]
+  },
+  "github": {
+    "app_id": "3905611",
+    "app_client_id": "Iv23litqPgCUrnfX90U",
+    "installation_id": "",
+    "pem_path": ".pandaclaw/github-app.pem",
+    "bot_name": "pandaclawbot",
+    "bot_email": "pandaclawbot@gmail.com"
   }
 }

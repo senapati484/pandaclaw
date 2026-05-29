@@ -70,20 +70,31 @@ export async function runFastPath(
   // 2. OpenRouter with a free/cheap model
   // 3. Nvidia NIM
   const chain: Array<() => Promise<{ data: LLMResponse; provider: string } | null>> = [
+    // ── Groq 70B — primary, best quality ──────────────────────────────────
     () =>
       tryProvider(
         config.providers.groq.api_base,
         config.providers.groq.api_key,
-        config.routing.fast_path.model,
+        config.routing.fast_path.model,   // llama-3.3-70b-versatile
         messages,
         maxTokens,
         temperature
       ),
+    // ── Groq 8B — fast fallback, separate rate-limit bucket ───────────────
+    () =>
+      tryProvider(
+        config.providers.groq.api_base,
+        config.providers.groq.api_key,
+        "llama-3.1-8b-instant",
+        messages,
+        maxTokens,
+        temperature
+      ),
+    // ── OpenRouter — if both Groq buckets are exhausted ───────────────────
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        // Use a fast free OpenRouter model as fallback
         "deepseek/deepseek-chat-v3-0324:free",
         messages,
         maxTokens,
@@ -93,11 +104,11 @@ export async function runFastPath(
           "X-Title": "PandaClaw",
         }
       ),
+    // ── NIM — last resort ─────────────────────────────────────────────────
     () =>
       tryProvider(
         config.providers.nvidia_nim.api_base,
         config.providers.nvidia_nim.api_key,
-        // Best free NIM model: MoE 675B, ideal for reasoning and agentic tasks
         NIM_MODELS.chat_large,   // mistralai/mistral-large-3-675b-instruct-2512
         messages,
         maxTokens,

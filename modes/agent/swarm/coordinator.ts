@@ -3,6 +3,24 @@ import type { PandaConfig } from "../../../ai/ai.config.js";
 import { SwarmWorker } from "./worker.js";
 import { callLLM } from "../../../ai/llm.js";
 
+// Role-specific token budgets — researcher/verifier are cheap fact-finders,
+// only coder truly needs a large context window for code generation.
+const WORKER_TOKEN_BUDGETS: Record<string, number> = {
+  researcher:  1024,  // returns facts, doesn't need to write code
+  coder:       4096,  // needs space for multi-file code reasoning
+  verifier:    512,   // short verdict: pass/fail + reason
+  visualizer:  768,   // spatial description, brief
+};
+
+// Model routing per role — use Groq (fast + free) for light roles,
+// reserve DeepSeek R1 (slow + expensive) only for the coder role.
+const WORKER_MODEL_ROUTE: Record<string, { provider: string; model: string }> = {
+  researcher:  { provider: "groq",       model: "llama-3.3-70b-versatile" },
+  coder:       { provider: "openrouter", model: "deepseek/deepseek-r1" },
+  verifier:    { provider: "groq",       model: "llama-3.3-70b-versatile" },
+  visualizer:  { provider: "groq",       model: "llama-3.3-70b-versatile" },
+};
+
 export class SwarmCoordinator {
   private config: PandaConfig;
   private workspacePath: string;
@@ -73,7 +91,7 @@ export class SwarmCoordinator {
 
       // Filter tasks whose dependencies are fully completed
       const readyTasks = pendingTasks.filter(t => {
-        return t.dependencies.every(depId => {
+        return (t.dependencies || []).every(depId => {
           const depTask = context.tasks.get(depId);
           return depTask && depTask.status === "completed";
         });
@@ -87,7 +105,10 @@ export class SwarmCoordinator {
         if (onProgress) {
           onProgress(`Running ${t.workerType} task: ${t.name}...`);
         }
-        const worker = new SwarmWorker(t.workerType, this.config);
+        // Pass role-specific token budget so each worker doesn't over-provision.
+        // Researcher/verifier use small budgets; only coder gets a large window.
+        const maxTokens = WORKER_TOKEN_BUDGETS[t.workerType] ?? 1024;
+        const worker = new SwarmWorker(t.workerType, this.config, maxTokens);
         const updated = await worker.run(t, context, onProgress);
         context.tasks.set(t.id, updated);
         if (updated.status === "completed" && updated.result) {
@@ -146,6 +167,7 @@ Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
 
     const tasks = JSON.parse(content) as any[];
     return tasks.map(t => ({
+      dependencies: [],
       ...t,
       status: "pending",
     }));

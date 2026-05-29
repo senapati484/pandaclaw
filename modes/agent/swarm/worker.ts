@@ -7,10 +7,14 @@ import chalk from "chalk";
 export class SwarmWorker {
   private type: SwarmWorkerType;
   private config: PandaConfig;
+  /** Per-role token ceiling. Researchers/verifiers get small budgets;
+   *  only the coder role gets the full 4096-token window. */
+  private maxTokens: number;
 
-  constructor(type: SwarmWorkerType, config: PandaConfig) {
+  constructor(type: SwarmWorkerType, config: PandaConfig, maxTokens = 1024) {
     this.type = type;
     this.config = config;
+    this.maxTokens = maxTokens;
   }
 
   public async run(
@@ -153,6 +157,7 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
           tools: apiTools,
           tool_choice: "auto",
           temperature: 0.1,
+          max_tokens: this.maxTokens,
         });
         const msg = data.choices?.[0]?.message;
         if (!msg) throw new Error("No response message from LLM");

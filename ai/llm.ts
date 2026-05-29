@@ -134,7 +134,7 @@ function sanitizeMessages(messages: any[]): any[] {
  */
 function patchGroqToolCall(failedGeneration: string): any | null {
   const match = failedGeneration.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) || failedGeneration.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
-  if (!match) return null;
+  if (!match || !match[1] || !match[2]) return null;
 
   const toolName = match[1];
   let toolArgs = match[2].trim();
@@ -171,7 +171,7 @@ function patchGroqToolCall(failedGeneration: string): any | null {
  */
 function parseTextToolCall(content: string): { name: string; arguments: string } | null {
   const match = content.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) || content.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
-  if (!match) return null;
+  if (!match || !match[1] || !match[2]) return null;
 
   const toolName = match[1];
   let toolArgs = match[2].trim();
