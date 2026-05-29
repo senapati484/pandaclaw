@@ -18,11 +18,11 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "file_read",
-      description: "Read the contents of a file on the local machine.",
+      description: "Read the contents of ANY file anywhere on the device. Use absolute paths like /Users/sayansenapati/Desktop/file.txt or relative paths.",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Relative or absolute path to the file." },
+          path: { type: "string", description: "Absolute or relative path to the file anywhere on the device." },
         },
         required: ["path"],
       },
@@ -32,11 +32,11 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "file_write",
-      description: "Write or create a file on the local machine with the given content.",
+      description: "Write or create a file ANYWHERE on the device. Creates parent directories automatically. Use absolute paths.",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Path to the file to write." },
+          path: { type: "string", description: "Absolute or relative path to the file to write anywhere on the device." },
           content: { type: "string", description: "Full content to write to the file." },
         },
         required: ["path", "content"],
@@ -47,12 +47,12 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "list_dir",
-      description: "List files and directories at a given path on the local machine.",
+      description: "List files and folders at ANY directory on the device. Use absolute paths like /Users/sayansenapati/Desktop.",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Directory path to list. Defaults to current directory." },
-          recursive: { type: "boolean", description: "Whether to list recursively." },
+          path: { type: "string", description: "Absolute path to the directory. E.g. /Users/sayansenapati/Desktop or /" },
+          recursive: { type: "boolean", description: "Whether to list recursively (default false)." },
         },
         required: [],
       },
@@ -62,12 +62,12 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "code_exec",
-      description: "Execute a shell command or script on the local machine and return output.",
+      description: "Execute any shell command on the device and return its output. Full system access — use bash commands like ls, cat, mkdir, echo, pwd, etc.",
       parameters: {
         type: "object",
         properties: {
-          code: { type: "string", description: "Shell command or TypeScript/JS code to execute." },
-          timeout: { type: "number", description: "Timeout in milliseconds (default 10000)." },
+          code: { type: "string", description: "Shell command to run. E.g. 'echo hello > /Users/sayansenapati/Desktop/test.txt' or 'ls /Users/sayansenapati'" },
+          timeout: { type: "number", description: "Timeout in milliseconds (default 15000)." },
         },
         required: ["code"],
       },
@@ -89,20 +89,29 @@ const TOOL_SCHEMAS = [
   },
 ];
 
-const SYSTEM_PROMPT = `You are PandaClaw, a powerful AI agent running locally on the user's machine.
-You have DIRECT access to their filesystem and can read files, write files, list directories, run code, and search the web.
-You are NOT a generic language model — you are an agent with real tools.
+const SYSTEM_PROMPT = `You are PandaClaw, a powerful AI agent running locally on the user's Mac.
+You have FULL, UNRESTRICTED access to the ENTIRE device — every file, folder, and command.
 
-When the user asks you to:
-- Read a file → use file_read
-- Write/create/append to a file → use file_write  
-- List files or explore the machine → use list_dir
-- Run a command or execute code → use code_exec
-- Search for something online → use web_search
+The device root is /. The user's home is /Users/sayansenapati.
+Common locations:
+  Desktop   → /Users/sayansenapati/Desktop
+  Downloads → /Users/sayansenapati/Downloads
+  Documents → /Users/sayansenapati/Documents
+  Dev projects → /Users/sayansenapati/Desktop/Dev
 
-Always use your tools to fulfill the request. Don't say "I can't access files" — you CAN.
-After completing a tool action, report what you did clearly and concisely.
-The workspace path is the directory where pandaclaw is running (process.cwd()).`;
+Your tools work with ANY absolute path on the device:
+  file_read  → read any file anywhere
+  file_write → create or edit any file anywhere (auto-creates folders)
+  list_dir   → browse any folder (use absolute paths like /Users/sayansenapati/Desktop)
+  code_exec  → run any shell command with full system access
+  web_search → search the internet
+
+RULES:
+- NEVER say "I can't access files" — you ALWAYS can via your tools.
+- ALWAYS use tools for file/folder tasks. Never just describe how to do it.
+- For file_write with "append", first file_read the file, then file_write the full new content.
+- When listing dirs, prefer absolute paths starting with /Users/sayansenapati or /.
+- After every tool action, confirm what you did in 1-2 sentences.`;
 
 // ── Call the LLM with tool schemas ────────────────────────────────────────
 async function callWithTools(

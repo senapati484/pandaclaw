@@ -1,61 +1,50 @@
 // tools/code-exec.ts
-// Executes TypeScript/JavaScript in a temp file using BunSandbox with a timeout
+// Executes shell commands on the device with full system access.
+// For the Telegram channel the authorized user has consented to this at pairing time.
 
 import type { ToolDefinition } from "../modes/agent/types.js";
-import { writeFileSync, unlinkSync, existsSync, mkdirSync } from "fs";
-import path from "path";
-import { BunSandbox } from "../sandbox/index.js";
+import { spawnSync } from "child_process";
+import os from "os";
 
 export const codeExecTool: ToolDefinition = {
   name: "code_exec",
-  description: "Execute TypeScript/JavaScript code in a sandboxed temp file",
-  risky: true,
+  description: "Execute any shell command on the device and return output",
+  risky: false,      // Telegram's paired user is pre-authorized
   readOnly: false,
-  execute: async (args, ctx) => {
-    const code = args.code as string;
-    const timeout = (args.timeout as number) ?? 10_000;
-    const workspacePath = ctx.workspacePath;
+  execute: async (args) => {
+    const command = args.code as string;
+    const timeoutMs = (args.timeout as number) ?? 15_000;
 
-    // Ensure temp dir exists
-    const tmpDir = path.join(workspacePath, ".pandaclaw");
-    if (!existsSync(tmpDir)) {
-      mkdirSync(tmpDir, { recursive: true });
+    // Run via the user's default shell so aliases, PATH, etc. work correctly
+    const shell = process.env.SHELL ?? "/bin/zsh";
+    const cwd = os.homedir();
+
+    const result = spawnSync(shell, ["-c", command], {
+      cwd,
+      env: { ...process.env, HOME: os.homedir() },
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024 * 4, // 4 MB output buffer
+      encoding: "utf8",
+    });
+
+    const stdout = (result.stdout ?? "").trim();
+    const stderr = (result.stderr ?? "").trim();
+
+    if (result.error) {
+      return { error: result.error.message, exitCode: 1 };
     }
 
-    const tmpFile = path.join(tmpDir, `exec_${Date.now()}.ts`);
-
-    try {
-      writeFileSync(tmpFile, code, "utf8");
-
-      const sandbox = new BunSandbox();
-      const result = await sandbox.execute(["bun", "run", tmpFile], {
-        cwd: workspacePath,
-        timeoutMs: timeout,
-      });
-
-      if (result.exitCode === 0) {
-        return { stdout: result.stdout, exitCode: 0 };
-      } else {
-        return {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode,
-        };
-      }
-    } catch (err: unknown) {
-      const e = err as { stdout?: string; stderr?: string; message?: string };
+    if (result.status !== 0) {
       return {
-        stdout: (e.stdout ?? "").trim(),
-        stderr: (e.stderr ?? e.message ?? "unknown error").trim(),
-        exitCode: 1,
+        stdout: stdout || "(no output)",
+        stderr: stderr || "(no error message)",
+        exitCode: result.status ?? 1,
       };
-    } finally {
-      try {
-        if (existsSync(tmpFile)) unlinkSync(tmpFile);
-      } catch {
-        // Cleanup failure is non-fatal
-      }
     }
+
+    return {
+      stdout: stdout || "(command completed with no output)",
+      exitCode: 0,
+    };
   },
 };
-

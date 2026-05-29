@@ -130,13 +130,12 @@ export class Gateway {
         return;
       }
 
-      // ── Build a ToolContext for this Telegram user ────────────────────
+      // ── Build a ToolContext for this Telegram user (full device access) ─
       const toolCtx: ToolContext = {
         userId: msg.senderId,
         channel: "telegram",
-        workspacePath: process.cwd(),
-        // File writes and code exec auto-approved for the paired user
-        requestConsent: async (_tool: string, _preview: string) => true,
+        workspacePath: "/",          // ← entire device, not just pandaclaw dir
+        requestConsent: async () => true, // paired user is pre-authorized
       };
 
       try {

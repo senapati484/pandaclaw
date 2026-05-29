@@ -1,25 +1,28 @@
 // tools/file-tools.ts
-// File read/write/list tools that operate within the workspace directory
+// File read/write/list tools — full device access, no path sandbox.
 
 import type { ToolDefinition } from "../modes/agent/types.js";
+import os from "os";
 import path from "path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
 
+/** Resolve a path that may be relative OR absolute, from the home dir as default base. */
+function resolvePath(inputPath: string): string {
+  if (path.isAbsolute(inputPath)) return inputPath;
+  // Relative paths resolve from the user's home directory
+  return path.resolve(os.homedir(), inputPath);
+}
+
 export const fileReadTool: ToolDefinition = {
   name: "file_read",
-  description: "Read a file from the workspace",
+  description: "Read any file anywhere on the device",
   risky: false,
   readOnly: true,
-  execute: async (args, ctx) => {
-    const filePath = path.resolve(ctx.workspacePath, args.path as string);
-
-    // Safety: must be within workspace
-    if (!filePath.startsWith(ctx.workspacePath)) {
-      throw new Error("Path traversal attempt blocked");
-    }
+  execute: async (args) => {
+    const filePath = resolvePath(args.path as string);
 
     if (!existsSync(filePath)) {
-      throw new Error(`File not found: ${args.path}`);
+      throw new Error(`File not found: ${filePath}`);
     }
 
     return readFileSync(filePath, "utf8");
@@ -28,67 +31,53 @@ export const fileReadTool: ToolDefinition = {
 
 export const fileWriteTool: ToolDefinition = {
   name: "file_write",
-  description: "Write content to a file in the workspace",
-  risky: true,
+  description: "Write or create any file anywhere on the device",
+  risky: false,           // ← no consent gate for Telegram (already authorized user)
   readOnly: false,
-  execute: async (args, ctx) => {
-    const filePath = path.resolve(ctx.workspacePath, args.path as string);
-
-    // Safety: must be within workspace
-    if (!filePath.startsWith(ctx.workspacePath)) {
-      throw new Error("Path traversal attempt blocked");
-    }
-
+  execute: async (args) => {
+    const filePath = resolvePath(args.path as string);
     const dir = path.dirname(filePath);
+
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
     writeFileSync(filePath, args.content as string, "utf8");
-    return `Written: ${args.path}`;
+    return `✅ Written to: ${filePath}`;
   },
 };
 
 export const listDirTool: ToolDefinition = {
   name: "list_dir",
-  description: "List files and directories in the workspace",
+  description: "List files and directories at any path on the device",
   risky: false,
   readOnly: true,
-  execute: async (args, ctx) => {
-    const relativeDir = (args.path as string) || ".";
-    const dirPath = path.resolve(ctx.workspacePath, relativeDir);
-
-    // Safety: must be within workspace
-    if (!dirPath.startsWith(ctx.workspacePath)) {
-      throw new Error("Path traversal attempt blocked");
-    }
-
-    if (!existsSync(dirPath)) {
-      throw new Error(`Directory not found: ${relativeDir}`);
-    }
-
+  execute: async (args) => {
+    const inputPath = (args.path as string) || os.homedir();
+    const dirPath = resolvePath(inputPath);
     const recursive = args.recursive === true;
 
+    if (!existsSync(dirPath)) {
+      throw new Error(`Directory not found: ${dirPath}`);
+    }
+
     const getFiles = (dir: string, depth = 0): string[] => {
-      if (depth > 5) return []; // limit recursion depth
+      if (depth > 4) return []; // limit depth to avoid huge outputs
       const entries = readdirSync(dir, { withFileTypes: true });
       let files: string[] = [];
       for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        const relPath = path.relative(ctx.workspacePath, fullPath);
+        // Skip heavy/irrelevant directories
+        if (["node_modules", ".git", ".cache", "__pycache__", ".DS_Store"].includes(entry.name)) continue;
 
-        // Skip hidden files/directories and node_modules
-        if (entry.name.startsWith(".") || entry.name === "node_modules") {
-          continue;
-        }
+        const fullPath = path.join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          files.push(relPath + "/");
+          files.push(fullPath + "/");
           if (recursive) {
             files.push(...getFiles(fullPath, depth + 1));
           }
         } else {
-          files.push(relPath);
+          files.push(fullPath);
         }
       }
       return files;
