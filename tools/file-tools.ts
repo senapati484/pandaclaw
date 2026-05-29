@@ -6,11 +6,14 @@ import os from "os";
 import path from "path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
 
-/** Resolve a path that may be relative OR absolute, from the home dir as default base. */
+/** Resolve a path that may be relative OR absolute. Supports ~/ home notation and falls back to process.cwd() for relative paths. */
 function resolvePath(inputPath: string): string {
+  if (inputPath.startsWith("~/")) {
+    return path.resolve(os.homedir(), inputPath.slice(2));
+  }
   if (path.isAbsolute(inputPath)) return inputPath;
-  // Relative paths resolve from the user's home directory
-  return path.resolve(os.homedir(), inputPath);
+  // Relative paths resolve from the current working directory of the project
+  return path.resolve(process.cwd(), inputPath);
 }
 
 export const fileReadTool: ToolDefinition = {

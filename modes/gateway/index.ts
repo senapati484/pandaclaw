@@ -164,10 +164,10 @@ export class Gateway {
 
       } catch (err: any) {
         const raw: string = err.message ?? "";
-        let friendly = "❌ Something went wrong. Please try again.";
+        let friendly = `❌ Error: ${raw || "Unknown error occurred"}`;
         if (raw.includes("429") || raw.toLowerCase().includes("rate limit")) {
           friendly = "⏳ *Rate limit hit* — AI providers are busy. Please wait a moment!";
-        } else if (raw.includes("All providers failed")) {
+        } else if (raw.includes("All providers failed") || raw.toLowerCase().includes("unreachable")) {
           friendly = "🌐 *All AI providers unreachable.* Check your internet or API keys.";
         }
         console.error(chalk.red(`[Gateway error] ${raw}`));

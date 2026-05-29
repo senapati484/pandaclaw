@@ -148,17 +148,16 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     name: "groq_70b",
     base: config.providers.groq.api_base,
     key:  config.providers.groq.api_key,
-    model: "llama3-groq-70b-8192-tool-use-preview",
+    model: "llama-3.3-70b-versatile",
     headers: {} as Record<string, string>,
     withTools: true,
   },
   {
     // Groq 8B — faster, smaller, same tool-calling capability
-    // Hits a separate rate-limit bucket so it still works when 70B is throttled
     name: "groq_8b",
     base: config.providers.groq.api_base,
     key:  config.providers.groq.api_key,
-    model: "llama3-groq-8b-8192-tool-use-preview",
+    model: "llama-3.1-8b-instant",
     headers: {} as Record<string, string>,
     withTools: true,
   },
@@ -194,6 +193,10 @@ async function callWithTools(
 
   for (const p of TOOL_PROVIDERS(config)) {
     if (!p.key) continue;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+
     try {
       const body: Record<string, unknown> = {
         model: p.model,
@@ -216,7 +219,10 @@ async function callWithTools(
           ...p.headers,
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const txt = await res.text();
@@ -226,8 +232,11 @@ async function callWithTools(
       const data = await res.json() as any;
       return { data, provider: p.name, hadTools: p.withTools };
     } catch (err: any) {
-      console.error(`[tool-agent] ${p.name} failed: ${err.message?.slice(0, 120)}`);
-      lastErr = err;
+      clearTimeout(timeoutId);
+      const isTimeout = err.name === "AbortError";
+      const errMsg = isTimeout ? "Request timed out after 5000ms" : err.message;
+      console.error(`[tool-agent] ${p.name} failed: ${errMsg?.slice(0, 120)}`);
+      lastErr = isTimeout ? new Error(`${p.name} timed out`) : err;
       continue;
     }
   }

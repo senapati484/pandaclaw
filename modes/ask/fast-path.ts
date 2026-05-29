@@ -26,25 +26,38 @@ async function tryProvider(
 ): Promise<{ data: LLMResponse; provider: string } | null> {
   if (!apiKey) return null;
 
-  const res = await fetch(`${apiBase}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
-    },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout for fast path
 
-  if (!res.ok) {
-    const errText = await res.text();
-    // Surface a structured error so callers can distinguish 429 from fatal errors
-    const err = new Error(`HTTP ${res.status}: ${errText}`) as any;
-    err.status = res.status;
-    throw err;
+  try {
+    const res = await fetch(`${apiBase}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...extraHeaders,
+      },
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      // Surface a structured error so callers can distinguish 429 from fatal errors
+      const err = new Error(`HTTP ${res.status}: ${errText}`) as any;
+      err.status = res.status;
+      throw err;
+    }
+
+    return { data: (await res.json()) as LLMResponse, provider: apiBase };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    const isTimeout = err.name === "AbortError";
+    const errMsg = isTimeout ? "Request timed out after 3000ms" : err.message;
+    throw new Error(errMsg);
   }
-
-  return { data: (await res.json()) as LLMResponse, provider: apiBase };
 }
 
 export async function runFastPath(

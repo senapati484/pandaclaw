@@ -17,7 +17,7 @@ export const codeExecTool: ToolDefinition = {
 
     // Run via the user's default shell so aliases, PATH, etc. work correctly
     const shell = process.env.SHELL ?? "/bin/zsh";
-    const cwd = os.homedir();
+    const cwd = process.cwd();
 
     const result = spawnSync(shell, ["-c", command], {
       cwd,
