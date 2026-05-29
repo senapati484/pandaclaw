@@ -41,14 +41,30 @@
       "model": "microsoft/phi-3.5-vision-128k-instruct"
     },
     "vision_chart": {
-      "provider": "openrouter",
-      "model": "qwen/qwen2-vl-7b-instruct"
+      "provider": "nvidia_nim",
+      "model": "meta/llama-3.2-90b-vision-instruct"
     },
     "vision_code": {
-      "provider": "groq",
-      "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+      "provider": "nvidia_nim",
+      "model": "meta/llama-3.2-11b-vision-instruct"
     },
-    "fallback_chain": ["groq", "openrouter", "nvidia_nim"]
+    "nvidia_nim_fast": {
+      "provider": "nvidia_nim",
+      "model": "meta/llama-3.1-70b-instruct",
+      "temperature": 0.1,
+      "maxTokens": 2048
+    },
+    "nvidia_nim_reason": {
+      "provider": "nvidia_nim",
+      "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+      "temperature": 0.1,
+      "maxTokens": 8192
+    },
+    "fallback_chain": [
+      "groq",
+      "openrouter",
+      "nvidia_nim"
+    ]
   },
   "tools": {
     "web_search": {
@@ -72,12 +88,23 @@
     "enabled": true
   },
   "telegram": {
-    "token": "8867579185:AAFWNWEwn41jfMyaYGiEauTbCieTmr99GoU",
-    "allowed_users": []
+    "token": "",
+    "allowed_users": [
+      5066968630
+    ]
   },
   "agent": {
     "maxIterations": 20,
-    "autoExecutePaths": ["src/", "tests/", "modes/"],
-    "askFirstPatterns": [".env", ".git", "package.json", "tsconfig.json"]
+    "autoExecutePaths": [
+      "src/",
+      "tests/",
+      "modes/"
+    ],
+    "askFirstPatterns": [
+      ".env",
+      ".git",
+      "package.json",
+      "tsconfig.json"
+    ]
   }
 }

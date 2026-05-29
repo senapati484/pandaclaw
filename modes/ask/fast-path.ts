@@ -96,7 +96,8 @@ export async function runFastPath(
       tryProvider(
         config.providers.nvidia_nim.api_base,
         config.providers.nvidia_nim.api_key,
-        "meta/llama-3.1-70b-instruct",
+        // nvidia/llama-3.1-nemotron-70b-instruct — free NIM endpoint, high quality
+        "nvidia/llama-3.1-nemotron-70b-instruct",
         messages,
         maxTokens,
         temperature

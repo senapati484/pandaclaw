@@ -53,19 +53,23 @@ export function readConfig(): PandaConfig {
 
   const file = JSON.parse(readFileSync(configPath, "utf8")) as PandaConfig;
 
-  // Allow env var overrides (CI/Docker)
-  if (process.env.GROQ_API_KEY)
-    file.providers.groq.api_key = process.env.GROQ_API_KEY;
-  if (process.env.YOUR_GROQ_API_KEY)
-    file.providers.groq.api_key = process.env.YOUR_GROQ_API_KEY;
-  if (process.env.OPENROUTER_API_KEY)
-    file.providers.openrouter.api_key = process.env.OPENROUTER_API_KEY;
-  if (process.env.YOUR_OPENROUTER_API_KEY)
-    file.providers.openrouter.api_key = process.env.YOUR_OPENROUTER_API_KEY;
-  if (process.env.NVIDIA_NIM_KEY)
-    file.providers.nvidia_nim.api_key = process.env.NVIDIA_NIM_KEY;
-  if (process.env.TELEGRAM_TOKEN)
-    file.telegram = { ...(file.telegram ?? { token: "", allowed_users: [] }), token: process.env.TELEGRAM_TOKEN };
+  // ── Load API keys from .env (env vars always override config.json) ──
+  // Groq
+  const groqKey = process.env.YOUR_GROQ_API_KEY || process.env.GROQ_API_KEY;
+  if (groqKey) file.providers.groq.api_key = groqKey;
+
+  // OpenRouter
+  const orKey = process.env.YOUR_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+  if (orKey) file.providers.openrouter.api_key = orKey;
+
+  // Nvidia NIM
+  const nimKey = process.env.NVIDIA_NIM_API_KEY || process.env.NVIDIA_NIM_KEY;
+  if (nimKey) file.providers.nvidia_nim.api_key = nimKey;
+
+  // Telegram
+  const tgToken = process.env.TELEGRAM_TOKEN;
+  if (tgToken)
+    file.telegram = { ...(file.telegram ?? { token: "", allowed_users: [] }), token: tgToken };
 
   _config = file;
   return _config!;
