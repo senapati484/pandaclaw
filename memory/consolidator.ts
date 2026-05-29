@@ -2,6 +2,7 @@ import { writeFileSync, existsSync, readFileSync } from "fs";
 import path from "path";
 import { loadMemory } from "./store.js";
 import type { PandaConfig } from "../ai/ai.config.js";
+import { callLLM } from "../ai/llm.js";
 
 export class MemoryConsolidator {
   private workspacePath: string;
@@ -16,17 +17,6 @@ export class MemoryConsolidator {
 
     if (entries.length === 0) {
       return "No entries to consolidate.";
-    }
-
-    const providerName = config.routing.fast_path.provider || "groq";
-    const provider = config.providers[providerName as keyof typeof config.providers];
-    if (!provider) {
-      return `Unsupported provider: ${providerName}`;
-    }
-    const apiKey = provider.api_key;
-    const apiBase = provider.api_base;
-    if (!apiKey) {
-      return `API key missing for provider ${providerName}, cannot consolidate memory.`;
     }
 
     // Compile entries list
@@ -47,27 +37,13 @@ ${logSummary}
 Format the output strictly as a clean Markdown document with ## headers for each category. Keep it concise.`;
 
     try {
-      const res = await fetch(`${apiBase}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.routing.fast_path.model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 2048,
-          temperature: 0.2,
-        }),
+      const data = await callLLM(config, {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2048,
+        temperature: 0.2,
       });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`LLM Provider ${providerName} returned status ${res.status}: ${errText}`);
-      }
-
-      const data = (await res.json()) as any;
-      const graph = data.choices[0]?.message?.content ?? "";
+      const graph = data.choices?.[0]?.message?.content ?? "";
 
       const graphPath = path.join(this.workspacePath, ".pandaclaw", "KNOWLEDGE_GRAPH.md");
       writeFileSync(graphPath, graph, "utf8");

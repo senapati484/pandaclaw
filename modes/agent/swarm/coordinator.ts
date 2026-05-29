@@ -1,6 +1,7 @@
 import type { SwarmTask, SwarmContext } from "./types.js";
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import { SwarmWorker } from "./worker.js";
+import { callLLM } from "../../../ai/llm.js";
 
 export class SwarmCoordinator {
   private config: PandaConfig;
@@ -105,18 +106,11 @@ export class SwarmCoordinator {
   }
 
   private async decomposeGoal(goals: string): Promise<SwarmTask[]> {
-    const providerName = this.config.routing.fast_path.provider || "groq";
-    const provider = this.config.providers[providerName as keyof typeof this.config.providers];
-    if (!provider) {
-      throw new Error(`Unsupported provider: ${providerName}`);
-    }
-    const apiKey = provider.api_key;
-    const apiBase = provider.api_base;
-    if (!apiKey) throw new Error(`No API key for provider ${providerName}`);
-
     const prompt = `Goal: "${goals}"
 
 Decompose this goal into a dependency tree of specialized sub-tasks.
+CRITICAL: Be extremely minimal. Optimize for speed and API roundtrips. A single worker (e.g. coder or researcher) can read, search, and modify files within its own reasoning loop. Do NOT split a task into separate planning, research, and coding tasks unless absolutely necessary. Usually, 1 or 2 tasks is the maximum required for simple goals.
+
 Each task must be assigned to one of the following worker types:
 - researcher (for file reading, web search, info gathering)
 - coder (for code writing, file modification)
@@ -135,26 +129,13 @@ Output a JSON array of tasks matching this schema:
 ]
 Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
 
-    const res = await fetch(`${apiBase}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.config.routing.fast_path.model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2048,
-        temperature: 0.1,
-      }),
+    const data = await callLLM(this.config, {
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 2048,
+      temperature: 0.1,
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`LLM decomposition failed for provider ${providerName} (status ${res.status}): ${errText}`);
-    }
-    const data = (await res.json()) as any;
-    let content = data.choices[0]?.message?.content ?? "";
+    let content = data.choices?.[0]?.message?.content ?? "";
     content = content.replace(/```json/i, "").replace(/```/g, "").trim();
 
     const tasks = JSON.parse(content) as any[];
@@ -165,17 +146,6 @@ Reply ONLY with the JSON block. Do not wrap in markdown tags.`;
   }
 
   private async synthesizeSummary(goals: string, tasks: SwarmTask[]): Promise<string> {
-    const providerName = this.config.routing.fast_path.provider || "groq";
-    const provider = this.config.providers[providerName as keyof typeof this.config.providers];
-    if (!provider) {
-      return tasks.map(t => `${t.name}: ${t.status}`).join("\n");
-    }
-    const apiKey = provider.api_key;
-    const apiBase = provider.api_base;
-    if (!apiKey) {
-      return tasks.map(t => `${t.name}: ${t.status}`).join("\n");
-    }
-
     const taskStates = tasks.map(t => {
       return `- Task [${t.name}] (${t.workerType}) status: ${t.status}\n  Result: ${t.result || t.error || "N/A"}`;
     }).join("\n");
@@ -188,23 +158,13 @@ ${taskStates}
 Synthesize a final unified response summarizing the final outcome.`;
 
     try {
-      const res = await fetch(`${apiBase}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.config.routing.fast_path.model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 1024,
-          temperature: 0.2,
-        }),
+      const data = await callLLM(this.config, {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1024,
+        temperature: 0.2,
       });
 
-      if (!res.ok) throw new Error("Synthesis failed");
-      const data = (await res.json()) as any;
-      return data.choices[0]?.message?.content ?? "Swarm task completed.";
+      return data.choices?.[0]?.message?.content ?? "Swarm task completed.";
     } catch {
       return "Swarm execution summary generated.";
     }

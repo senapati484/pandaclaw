@@ -1,6 +1,7 @@
 import type { SwarmTask, SwarmContext, SwarmWorkerType } from "./types.js";
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import { runTool } from "../../../tools/index.js";
+import { callLLM } from "../../../ai/llm.js";
 import chalk from "chalk";
 
 export class SwarmWorker {
@@ -16,16 +17,6 @@ export class SwarmWorker {
     task.status = "in_progress";
 
     try {
-      const providerName = this.config.routing.fast_path.provider || "groq";
-      const provider = this.config.providers[providerName as keyof typeof this.config.providers];
-      if (!provider) {
-        throw new Error(`Unsupported provider: ${providerName}`);
-      }
-      const apiKey = provider.api_key;
-      const apiBase = provider.api_base;
-      if (!apiKey) {
-        throw new Error(`Missing API Key for provider: ${providerName}`);
-      }
 
       let systemPrompt = "";
       switch (this.type) {
@@ -138,28 +129,13 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
       const maxTurns = 5;
 
       while (turns < maxTurns) {
-        const res = await fetch(`${apiBase}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.config.routing.fast_path.model,
-            messages,
-            tools: apiTools,
-            tool_choice: "auto",
-            temperature: 0.1,
-          }),
+        const data = await callLLM(this.config, {
+          messages,
+          tools: apiTools,
+          tool_choice: "auto",
+          temperature: 0.1,
         });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`LLM Provider ${providerName} returned status ${res.status}: ${errText}`);
-        }
-
-        const data = (await res.json()) as any;
-        const msg = data.choices[0]?.message;
+        const msg = data.choices?.[0]?.message;
         if (!msg) throw new Error("No response message from LLM");
 
         messages.push(msg);
