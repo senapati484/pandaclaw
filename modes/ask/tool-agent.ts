@@ -138,44 +138,63 @@ RULES:
 - After every tool action confirm what you did in 1-2 sentences.`;
 }
 
-// ── Call the LLM with tool schemas ────────────────────────────────────────
+// ── Providers that SUPPORT OpenAI function/tool calling ───────────────────
+// NIM is intentionally excluded — it 404s on the tools parameter.
+// OpenRouter: mistral-7b-instruct supports tool calling on the free tier.
+// Groq: llama3-groq-70b-8192-tool-use-preview is purpose-built for tool use.
+const TOOL_PROVIDERS = (config: PandaConfig) => [
+  {
+    name: "groq",
+    base: config.providers.groq.api_base,
+    key: config.providers.groq.api_key,
+    model: "llama3-groq-70b-8192-tool-use-preview",   // Groq's dedicated tool-use model
+    headers: {} as Record<string, string>,
+    withTools: true,
+  },
+  {
+    name: "openrouter",
+    base: config.providers.openrouter.api_base,
+    key: config.providers.openrouter.api_key,
+    model: "mistralai/mistral-7b-instruct:free",       // Free tier, supports function calling
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  // ── Plain-text fallback (NIM — no tool calling, just answer from context) ─
+  {
+    name: "nvidia_nim",
+    base: config.providers.nvidia_nim.api_base,
+    key: config.providers.nvidia_nim.api_key,
+    model: "meta/llama-3.1-8b-instruct",              // Fast NIM model, plain text only
+    headers: {} as Record<string, string>,
+    withTools: false,   // ← NIM doesn't support tool calling; skip tools param
+  },
+];
+
 async function callWithTools(
   config: PandaConfig,
   messages: any[]
 ): Promise<any> {
-  // Try Groq first (fast), then OpenRouter, then NIM
-  const providers = [
-    {
-      name: "groq",
-      base: config.providers.groq.api_base,
-      key: config.providers.groq.api_key,
-      model: config.routing.fast_path.model,
-      headers: {},
-    },
-    {
-      name: "openrouter",
-      base: config.providers.openrouter.api_base,
-      key: config.providers.openrouter.api_key,
-      model: "deepseek/deepseek-chat-v3-0324:free",
-      headers: {
-        "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-        "X-Title": "PandaClaw",
-      },
-    },
-    {
-      name: "nvidia_nim",
-      base: config.providers.nvidia_nim.api_base,
-      key: config.providers.nvidia_nim.api_key,
-      model: "nvidia/llama-3.1-nemotron-70b-instruct",
-      headers: {},
-    },
-  ];
-
   let lastErr: Error | null = null;
 
-  for (const p of providers) {
+  for (const p of TOOL_PROVIDERS(config)) {
     if (!p.key) continue;
     try {
+      const body: Record<string, unknown> = {
+        model: p.model,
+        messages,
+        temperature: 0.1,
+        max_tokens: 4096,
+      };
+
+      // Only attach tool schemas to providers that support it
+      if (p.withTools) {
+        body.tools = TOOL_SCHEMAS;
+        body.tool_choice = "auto";
+      }
+
       const res = await fetch(`${p.base}/chat/completions`, {
         method: "POST",
         headers: {
@@ -183,33 +202,26 @@ async function callWithTools(
           Authorization: `Bearer ${p.key}`,
           ...p.headers,
         },
-        body: JSON.stringify({
-          model: p.model,
-          messages,
-          tools: TOOL_SCHEMAS,
-          tool_choice: "auto",
-          temperature: 0.1,
-          max_tokens: 4096,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
         const txt = await res.text();
-        const err = new Error(`${p.name} HTTP ${res.status}: ${txt}`) as any;
-        err.status = res.status;
-        throw err;
+        throw new Error(`${p.name} HTTP ${res.status}: ${txt}`);
       }
 
       const data = await res.json() as any;
-      return { data, provider: p.name };
+      return { data, provider: p.name, hadTools: p.withTools };
     } catch (err: any) {
+      console.error(`[tool-agent] ${p.name} failed: ${err.message?.slice(0, 120)}`);
       lastErr = err;
-      continue; // try next provider
+      continue;
     }
   }
 
-  throw lastErr ?? new Error("All providers failed");
+  throw lastErr ?? new Error("All providers failed for tool agent");
 }
+
 
 // ── Main agentic loop ─────────────────────────────────────────────────────
 export async function runToolAgent(
@@ -228,7 +240,7 @@ export async function runToolAgent(
   const MAX_ITERATIONS = 8;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const { data } = await callWithTools(config, messages);
+    const { data, hadTools } = await callWithTools(config, messages);
     const choice = data.choices?.[0];
     const msg = choice?.message;
 
@@ -237,8 +249,8 @@ export async function runToolAgent(
     // Add assistant turn to history
     messages.push(msg);
 
-    // If the model wants to call tools
-    if (msg.tool_calls && msg.tool_calls.length > 0) {
+    // If the provider supports tool calling AND the model chose to call tools
+    if (hadTools && msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
         const toolName: string = tc.function?.name ?? "";
         let toolArgs: Record<string, unknown> = {};
@@ -251,10 +263,10 @@ export async function runToolAgent(
 
         toolsUsed.push(toolName);
 
-        // Run the tool
+        // Run the tool on the actual device
         const result = await runTool(toolName, toolArgs, ctx);
 
-        // Add tool result back to messages
+        // Feed tool result back to the LLM
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
@@ -264,11 +276,11 @@ export async function runToolAgent(
         });
       }
 
-      // Continue loop — LLM will now process the tool results
+      // Continue loop — LLM will process the tool results next
       continue;
     }
 
-    // No tool calls → final answer
+    // No tool calls (or plain-text fallback provider) → return final answer
     const answer = msg.content ?? "(no response)";
     return {
       answer,
