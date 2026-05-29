@@ -252,23 +252,35 @@ export function estimateMutationRisk(
   return "low";
 }
 
+import { readConfig } from "../../ai/ai.config.js";
+
 export function defaultAgentConfig(): AgentConfig {
+  let userConfig: any = {};
+  try {
+    userConfig = readConfig();
+  } catch {
+    // Ignore config read failures
+  }
+
+  const agentConfig = userConfig.agent || {};
+  const toolsConfig = agentConfig.tools || {};
+
   return {
     codebasePath: process.cwd(),
     maxFileSizeToRead: 1024 * 1024, // 1MB
-    autoExecutePaths: ["src/", "tests/", "modes/"],
-    askFirstPaths: [".env", "package.json", "tsconfig.json"],
-    askFirstPatterns: [".env", ".git", ".github", "node_modules"],
+    autoExecutePaths: agentConfig.autoExecutePaths || ["src/", "tests/", "modes/"],
+    askFirstPaths: agentConfig.askFirstPaths || [".env", "package.json", "tsconfig.json"],
+    askFirstPatterns: agentConfig.askFirstPatterns || [".env", ".git", ".github", "node_modules"],
     tools: {
-      allowShellExecution: false,
-      allowFileModification: true,
-      allowFileCreation: true,
-      allowFolderCreation: true,
+      allowShellExecution: toolsConfig.allowShellExecution ?? true,
+      allowFileModification: toolsConfig.allowFileModification ?? true,
+      allowFileCreation: toolsConfig.allowFileCreation ?? true,
+      allowFolderCreation: toolsConfig.allowFolderCreation ?? true,
     },
     approvalThresholds: {
-      autoExecuteMutationLimit: 5,
-      autoExecuteFileSizeLimit: 50 * 1024, // 50KB
-      alwaysAskFor: ["file_delete", "folder_delete", "shell_command"],
+      autoExecuteMutationLimit: agentConfig.approvalThresholds?.autoExecuteMutationLimit ?? 5,
+      autoExecuteFileSizeLimit: agentConfig.approvalThresholds?.autoExecuteFileSizeLimit ?? 50 * 1024,
+      alwaysAskFor: agentConfig.approvalThresholds?.alwaysAskFor ?? ["file_delete", "folder_delete", "shell_command"],
     },
   };
 }
