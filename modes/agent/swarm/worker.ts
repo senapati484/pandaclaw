@@ -13,7 +13,11 @@ export class SwarmWorker {
     this.config = config;
   }
 
-  public async run(task: SwarmTask, context: SwarmContext): Promise<SwarmTask> {
+  public async run(
+    task: SwarmTask,
+    context: SwarmContext,
+    onProgress?: (message: string) => void
+  ): Promise<SwarmTask> {
     task.status = "in_progress";
 
     try {
@@ -23,19 +27,20 @@ export class SwarmWorker {
         case "researcher":
           systemPrompt = `You are a researcher worker agent in a PandaClaw swarm.
 Your goal is to gather facts, search the web, read files, or analyze data.
-You have tools to read files, search the web, and fetch URLs.
-Solve the task step-by-step using your tools.`;
+You have tools to read files, search the web, list directories, and fetch URLs.
+CRITICAL: Do NOT guess or make assumptions about file contents. If you need to explain, verify, or analyze a file, directory, or repository, you MUST first list the files using 'list_dir' and then read the actual contents of the key files (such as README.md, package.json, main configuration files, or entry points) using 'file_read' before finalizing your response. Your output must be highly accurate and grounded in the actual file contents.`;
           break;
         case "coder":
           systemPrompt = `You are a coding specialist worker agent in a PandaClaw swarm.
 Your goal is to implement, edit, or create files, and write logic.
-You have tools to write files, read files, and execute code.
-Solve the task by making necessary file writes.`;
+You have tools to write files, read files, list directories, and execute code.
+CRITICAL: Before writing or modifying any file, you must first read its existing content (if it exists) to ensure your changes integrate seamlessly without breaking existing functionality. Check your changes for correctness.`;
           break;
         case "verifier":
           systemPrompt = `You are a verification specialist worker agent in a PandaClaw swarm.
 Your goal is to check correctness, sanity check files, run tests, and critique outputs.
-You have tools to read files, write files, and execute tests.`;
+You have tools to read files, list directories, write files, and execute tests.
+CRITICAL: Verify code correctness by inspecting the code structure or running tests. Do not just assume things are correct.`;
           break;
         case "visualizer":
           systemPrompt = `You are a visual design worker agent in a PandaClaw swarm.
@@ -159,7 +164,9 @@ Your goal is to locate coordinate details, format reports, or outline mockups.`;
             const toolName = tc.function.name;
             const toolArgs = JSON.parse(tc.function.arguments);
 
-            console.log(chalk.gray(`      Executing tool [${toolName}] for task [${task.name}]...`));
+            if (onProgress) {
+              onProgress(`Worker [${task.name}] executing tool [${toolName}]...`);
+            }
 
             const toolCtx = {
               channel: "cli" as const,

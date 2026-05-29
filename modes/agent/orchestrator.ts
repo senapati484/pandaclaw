@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { select, isCancel, text, confirm } from "@clack/prompts";
+import { select, isCancel, text, confirm, spinner } from "@clack/prompts";
 import { randomUUID } from "crypto";
 import type { ReactorSession, AgentConfig, ModelTaskType } from "./types";
 import { defaultAgentConfig } from "./types";
@@ -407,9 +407,14 @@ export async function runAgentMode(): Promise<void> {
 
   const coordinator = new SwarmCoordinator(config, process.cwd());
 
-  console.log(chalk.gray("\nDecomposing goal into specialized swarm tasks..."));
+  const s = spinner();
+  s.start("Decomposing goal into specialized swarm tasks...");
   
-  const result = await coordinator.runSwarm(goal.trim());
+  const result = await coordinator.runSwarm(goal.trim(), (msg) => {
+    s.message(msg);
+  });
+
+  s.stop("Swarm execution completed");
 
   const purpleTheme = chalk.hex('#5b4d9e');
 

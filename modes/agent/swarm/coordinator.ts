@@ -12,7 +12,10 @@ export class SwarmCoordinator {
     this.workspacePath = workspacePath;
   }
 
-  public async runSwarm(goals: string): Promise<{ success: boolean; result: string; tasks: SwarmTask[] }> {
+  public async runSwarm(
+    goals: string,
+    onProgress?: (message: string) => void
+  ): Promise<{ success: boolean; result: string; tasks: SwarmTask[] }> {
     const context: SwarmContext = {
       workspacePath: this.workspacePath,
       goals,
@@ -81,8 +84,11 @@ export class SwarmCoordinator {
       }
 
       const runPromises = readyTasks.map(async (t) => {
+        if (onProgress) {
+          onProgress(`Running ${t.workerType} task: ${t.name}...`);
+        }
         const worker = new SwarmWorker(t.workerType, this.config);
-        const updated = await worker.run(t, context);
+        const updated = await worker.run(t, context, onProgress);
         context.tasks.set(t.id, updated);
         if (updated.status === "completed" && updated.result) {
           context.history.push(`Task [${updated.name}] result: ${updated.result}`);
