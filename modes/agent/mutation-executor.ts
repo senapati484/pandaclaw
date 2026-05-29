@@ -123,12 +123,13 @@ export class MutationExecutor {
 
     console.log(chalk.yellow("\n━".repeat(60)) + "\n");
 
-    const approved = await confirm({
+    const approvedRaw = await confirm({
       message: "Approve this mutation?",
       initialValue: mutation.estimatedRisk === "low",
     });
 
-    return approved;
+    // @clack/prompts confirm() returns boolean | symbol (symbol = user cancelled)
+    return typeof approvedRaw === "boolean" ? approvedRaw : false;
   }
 
   private async executeFileCreate(fullPath: string, mutation: MutationProposal): Promise<void> {

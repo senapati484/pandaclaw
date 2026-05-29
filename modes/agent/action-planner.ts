@@ -228,19 +228,19 @@ Example response:
 
     // Strategy 1: Find a word with a file extension (e.g. testing.txt, hello.ts)
     const extMatch = goal.match(/\b([\w-]+\.\w{1,6})\b/i);
-    if (extMatch) {
+    if (extMatch && extMatch[1]) {
       fileName = extMatch[1];
     } else {
       // Strategy 2: "called X" or "named X"
       const calledMatch = goal.match(/(?:called|named)\s+([\w.-]+)/i);
-      if (calledMatch) {
+      if (calledMatch && calledMatch[1]) {
         fileName = calledMatch[1].includes(".") ? calledMatch[1] : `${calledMatch[1]}.ts`;
       } else {
         // Strategy 3: extract the noun after create/make/add ... file/component
         const createMatch = goal.match(
           /(?:create|make|add)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+|named\s+)?([\w.-]+)/i
         );
-        if (createMatch && createMatch[1].toLowerCase() !== "file") {
+        if (createMatch && createMatch[1] && createMatch[1].toLowerCase() !== "file") {
           const name = createMatch[1];
           fileName = name.includes(".") ? name : `${name}.ts`;
         }
@@ -349,27 +349,27 @@ Example response:
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
+      if (!step) continue;
 
       // File creates should come before modifies of the same file
       if (step.type === "file_modify") {
         for (let j = 0; j < i; j++) {
           const prevStep = steps[j];
-          if (prevStep.type === "file_create" && prevStep.path === step.path) {
+          if (prevStep && prevStep.type === "file_create" && prevStep.path === step.path) {
             dependencies.push(`Step ${j + 1} must complete before Step ${i + 1}`);
           }
         }
       }
 
-      // Analysis should come before modifications
+      // Analysis (code_analysis action type) should come before modifications
       if (
         (step.type === "file_modify" || step.type === "file_create") &&
         i > 0
       ) {
+        // code_analysis is an ActionType (not MutationType) so we cast to check
         const prevStep = steps[i - 1];
-        if (prevStep.type === "code_analysis") {
-          dependencies.push(
-            `Step ${i} must complete after Step ${i - 1}`
-          );
+        if (prevStep && (prevStep as any).type === "code_analysis") {
+          dependencies.push(`Step ${i} must complete after Step ${i - 1}`);
         }
       }
     }

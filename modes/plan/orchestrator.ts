@@ -1,151 +1,93 @@
+// modes/plan/orchestrator.ts
+// Plan Mode CLI — goal → generate plan → display → confirm → execute
+
 import chalk from "chalk";
 import { text, confirm } from "@clack/prompts";
-import { randomUUID } from "crypto";
-import type { Plan } from "./types";
-import { PlanTracker } from "./plan-tracker";
-import { SessionMemoryManager } from "./session-memory";
-import { ModelSelector } from "./model-selector";
-import { PlanGenerator } from "./plan-generator";
-import { PlanValidator } from "./plan-validator";
-import { PlanOptimizer } from "./plan-optimizer";
+import type { Plan } from "../../modes/agent/types.js";
+import { generatePlan } from "./plan-generator.js";
+import { executePlan } from "./plan-executor.js";
+import { readConfig } from "../../ai/ai.config.js";
 
-export class PlanOrchestrator {
-  private plan: Plan | null = null;
-  private tracker: PlanTracker;
-  private memory: SessionMemoryManager;
-  private modelSelector: ModelSelector;
-  private generator: PlanGenerator;
-  private validator: PlanValidator;
-  private optimizer: PlanOptimizer;
+const PANDA = chalk.hex("#5b4d9e");
+const FACE  = chalk.hex("#e8dcf8");
 
-  constructor() {
-    this.tracker = new PlanTracker();
-    this.memory = new SessionMemoryManager();
-    this.modelSelector = new ModelSelector();
-    this.generator = new PlanGenerator();
-    this.validator = new PlanValidator();
-    this.optimizer = new PlanOptimizer();
-  }
+function displayPlan(plan: Plan): void {
+  console.log(PANDA(`\n📋 Plan for: "${plan.goal}"\n`));
+  console.log(
+    chalk.gray(`   Complexity: ${plan.estimatedComplexity} · ${plan.steps.length} steps\n`)
+  );
 
-  async initializeSession(goal: string): Promise<Plan> {
-    console.log(chalk.cyan("\n🐼 Initializing Planner Session...\n"));
-
-    // 1. Generate plan
-    const initialPlan = await this.generator.generatePlan(goal, undefined, this.modelSelector);
-
-    // 2. Validate
-    const validation = this.validator.validate(initialPlan.tasks, this.memory);
-    initialPlan.validation = validation;
-
-    // 3. Optimize
-    const optimization = this.optimizer.optimize(initialPlan.tasks);
-    initialPlan.optimization = optimization;
-
-    // Update status to validated if valid
-    initialPlan.status = validation.valid ? "validated" : "draft";
-
-    this.plan = initialPlan;
-    this.tracker.recordPlan(initialPlan);
-
-    return this.plan;
-  }
-
-  async runPlanningLoop(): Promise<void> {
-    if (!this.plan) {
-      throw new Error("Plan session not initialized.");
+  for (const step of plan.steps) {
+    const icon = step.tool ? "🔧" : "💭";
+    console.log(FACE(`  ${step.index + 1}. ${icon} ${step.title}`));
+    console.log(chalk.gray(`     ${step.description}`));
+    if (step.tool) {
+      console.log(chalk.gray(`     Tool: ${step.tool}`));
     }
-
-    console.log(chalk.cyan("🚀 Starting Planning Pipeline...\n"));
-
-    // Phase 1: Understand & Decompose
-    console.log(chalk.gray("📍 Phase 1: UNDERSTAND & DECOMPOSE"));
-    console.log(chalk.gray(`  Goal: ${this.plan.goal}`));
-    console.log(chalk.gray(`  Decomposed into ${this.plan.tasks.length} tasks.`));
-
-    // Phase 2: Validate
-    console.log(chalk.gray("\n📍 Phase 2: VALIDATE"));
-    if (this.plan.validation?.valid) {
-      console.log(chalk.green("  ✓ Plan validated successfully. No dependency cycles or missing targets."));
-    } else {
-      console.log(chalk.red("  ✗ Plan validation failed. Issues:"));
-      this.plan.validation?.issues.forEach((issue) => console.log(chalk.red(`    - ${issue}`)));
+    if (step.dependsOn && step.dependsOn.length > 0) {
+      console.log(chalk.gray(`     Depends on: steps ${step.dependsOn.map((d) => d + 1).join(", ")}`));
     }
-
-    // Phase 3: Optimize
-    console.log(chalk.gray("\n📍 Phase 3: OPTIMIZE"));
-    if (this.plan.optimization) {
-      console.log(chalk.gray(`  Original cumulative effort: ${this.plan.optimization.originalEffort} hours`));
-      console.log(chalk.gray(`  Optimized (critical path) effort: ${this.plan.optimization.optimizedEffort} hours`));
-      console.log(chalk.gray(`  Critical Path sequence: ${this.plan.optimization.criticalPath.join(" -> ")}`));
-      console.log(chalk.gray(`  Execution Levels (Parallel Groups):`));
-      this.plan.optimization.parallelGroups.forEach((group, idx) => {
-        console.log(chalk.gray(`    Level ${idx + 1}: ${group.join(", ")}`));
-      });
-    }
-
-    // Phase 4: Output Markdown
-    console.log(chalk.cyan("\n📊 Plan Document Generated:\n"));
-    this.printPlanSummary();
-  }
-
-  private printPlanSummary(): void {
-    if (!this.plan || !this.plan.optimization) return;
-
-    console.log(chalk.green(`=======================================================`));
-    console.log(chalk.green(`PLAN DOCUMENT: ${this.plan.goal}`));
-    console.log(chalk.green(`=======================================================`));
-    console.log(chalk.gray(`Plan ID: ${this.plan.id} | Version: ${this.plan.version} | Status: ${this.plan.status}`));
-    console.log(chalk.gray(`Estimated Effort: ${this.plan.estimatedEffort} hours (Optimized: ${this.plan.optimization.optimizedEffort} hours)`));
-    console.log(chalk.gray(`Estimated Risk: ${this.plan.estimatedRisk}`));
-    console.log(chalk.green("\nTasks:"));
-
-    for (const t of this.plan.tasks) {
-      console.log(chalk.green(`\n- [${t.id}] ${t.description}`));
-      console.log(chalk.gray(`  Type: ${t.type} | Effort: ${t.effort}h | Risk: ${t.riskLevel}`));
-      console.log(chalk.gray(`  Dependencies: ${t.dependencies.length > 0 ? t.dependencies.join(", ") : "none"}`));
-      console.log(chalk.gray(`  Success Criteria:`));
-      t.successCriteria.forEach(sc => console.log(chalk.gray(`    * ${sc}`)));
-    }
-
-    console.log(chalk.green("\nOptimized Levels (Parallel Execution):"));
-    this.plan.optimization.parallelGroups.forEach((group, idx) => {
-      console.log(chalk.gray(`  Level ${idx + 1}: ${group.join(", ")}`));
-    });
-    console.log(chalk.green(`=======================================================`));
+    console.log();
   }
 }
 
-/**
- * CLI Runner for Plan Mode
- */
 export async function runPlanMode(): Promise<void> {
-  console.log(chalk.cyan("\n🐼 Welcome to Plan Mode!\n"));
+  const config = readConfig();
 
-  const goal = await text({
-    message: "What project goal do you want to plan?",
-    placeholder: "e.g. Implement user login database migration"
+  console.log(PANDA("\n🐼 Plan Mode — I plan before I act\n"));
+  console.log(FACE("  Tell me your goal. I'll break it into steps,"));
+  console.log(FACE("  show you the plan, then execute with your approval.\n"));
+
+  const goalInput = await text({
+    message: "What's your goal?",
+    placeholder: "e.g. Add user authentication to my Express app",
+    validate: (v: string | undefined) => (!v || v.trim().length < 5 ? "Please describe your goal" : undefined),
   });
 
-  if (typeof goal === "symbol" || !goal.trim()) {
-    console.log(chalk.yellow("Plan generation cancelled."));
+  // Handle cancel
+  if (!goalInput || typeof goalInput === "symbol") {
+    console.log(PANDA("\nMaybe later, panda...\n"));
     return;
   }
 
-  const orchestrator = new PlanOrchestrator();
-  await orchestrator.initializeSession(goal.trim());
-  await orchestrator.runPlanningLoop();
+  const goal = goalInput.trim();
 
-  const shouldExecute = await confirm({
-    message: "Would you like to execute this plan now?",
-    initialValue: true,
-  });
+  // Generate plan
+  console.log(PANDA("\n🐼 Planning...\n"));
 
-  if (shouldExecute && typeof shouldExecute !== "symbol") {
-    const { AgentOrchestrator } = await import("../agent/orchestrator.js");
-    const agentOrchestrator = new AgentOrchestrator();
-    await agentOrchestrator.initializeSession(goal.trim());
-    await agentOrchestrator.runReactorLoop();
+  let plan: Plan;
+  try {
+    plan = await generatePlan(goal, config);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`\n  ❌ Error generating plan: ${msg}\n`));
+    return;
   }
 
-  console.log(chalk.cyan("\nThanks for using Plan Mode! 🐼\n"));
+  // Show the plan
+  displayPlan(plan);
+
+  const shouldProceed = await confirm({ message: "Execute this plan?" });
+
+  if (!shouldProceed || typeof shouldProceed === "symbol") {
+    console.log(PANDA("\nPlan saved. Revisit plan mode to execute.\n"));
+    return;
+  }
+
+  // Execute
+  console.log(PANDA("\n🚀 Executing plan...\n"));
+  const result = await executePlan(plan, config);
+
+  console.log(PANDA(`\n✅ Plan complete!\n`));
+  console.log(FACE("Result:\n"));
+  console.log(result.finalAnswer);
+  console.log();
+  console.log(
+    chalk.gray(
+      `  Steps: ${result.stepsCompleted} done · ${result.stepsFailed} failed · ${result.durationMs}ms`
+    )
+  );
+  console.log();
+
+  console.log(PANDA("Thanks for using Plan Mode! 🐼\n"));
 }

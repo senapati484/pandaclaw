@@ -1,3 +1,5 @@
+// modes/agent/types.ts
+
 import type { LanguageModel } from "ai";
 
 // ============ Action & Mutation Types ============
@@ -40,7 +42,7 @@ export interface ActionLog {
 
 // ============ Model & LLM Types ============
 
-export type ModelProvider = "groq" | "openrouter";
+export type ModelProvider = "groq" | "openrouter" | "nvidia_nim";
 
 export type ModelTaskType = "planning" | "coding" | "analysis" | "reflection";
 
@@ -269,4 +271,139 @@ export function defaultAgentConfig(): AgentConfig {
       alwaysAskFor: ["file_delete", "folder_delete", "shell_command"],
     },
   };
+}
+
+// ============ Vision Types ============
+
+export type VisionContentType =
+  | "screenshot"
+  | "document"
+  | "chart"
+  | "code"
+  | "general";
+
+export interface SpatialElement {
+  type: string;
+  label?: string;
+  text?: string;
+  position?: { x: number; y: number; w?: number; h?: number };
+  confidence: number;
+}
+
+export interface CodeFinding {
+  line?: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+  fix?: string;
+}
+
+export type VisionAction =
+  | { type: "describe"; summary: string }
+  | { type: "extract"; data: Record<string, unknown> }
+  | { type: "diagnose"; issue: string; fix: string }
+  | { type: "navigate"; instruction: string }
+  | { type: "code_review"; findings: CodeFinding[] };
+
+export interface VisionResult {
+  contentType: VisionContentType;
+  elements: SpatialElement[];
+  reasoning: string;
+  action: VisionAction;
+  modelUsed: string;
+}
+
+// ============ Ask Mode Types ============
+
+export type AskTaskType = "simple" | "complex" | "vision";
+
+export interface AskTask {
+  id: string;
+  type: AskTaskType;
+  input: string;
+  images?: Buffer[];
+  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  createdAt: Date;
+}
+
+export interface AskResult {
+  answer: string;
+  taskType: AskTaskType;
+  tokensUsed: number;
+  provider: ModelProvider;
+  durationMs: number;
+  verified: boolean;
+}
+
+// ============ Plan Mode Types ============
+
+export interface PlanStep {
+  index: number;
+  title: string;
+  description: string;
+  tool?: string | null;
+  toolArgs?: Record<string, unknown> | null;
+  dependsOn?: number[];
+  status: "pending" | "running" | "done" | "skipped" | "failed";
+  result?: string;
+}
+
+export interface Plan {
+  id: string;
+  goal: string;
+  steps: PlanStep[];
+  estimatedComplexity: "low" | "medium" | "high";
+  createdAt: Date;
+}
+
+export interface PlanExecutionResult {
+  planId: string;
+  goal: string;
+  finalAnswer: string;
+  stepsCompleted: number;
+  stepsFailed: number;
+  verified: boolean;
+  durationMs: number;
+}
+
+// ============ Tool Types ============
+
+export interface ToolContext {
+  userId?: string;
+  channel: "cli" | "telegram" | "discord" | "web";
+  requestConsent: (tool: string, preview: string) => Promise<boolean>;
+  workspacePath: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  risky: boolean;
+  readOnly: boolean;
+  execute: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+}
+
+export interface ToolResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+// ============ Memory Types ============
+
+export interface MemoryEntry {
+  id: string;
+  timestamp: number;
+  role: "user" | "assistant";
+  content: string;
+  summary?: string;
+  tags?: string[];
+  importance: "low" | "medium" | "high";
+}
+
+export interface PersistentMemory {
+  sessionCount: number;
+  lastSeen: number;
+  userPreferences: Record<string, string>;
+  recentEntries: MemoryEntry[];
+  longTermFacts: MemoryEntry[];
 }

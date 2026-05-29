@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+
+// index.ts
+
 import { Command } from "commander";
 const program = new Command();
 

@@ -61,6 +61,11 @@ export class CodebaseContextManager {
     return this.index;
   }
 
+  /** Public read-only accessor for the current index */
+  getCodebaseIndex(): CodebaseIndex {
+    return this.index;
+  }
+
   /**
    * Refresh specific file or folder in index
    */

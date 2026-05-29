@@ -1,9 +1,134 @@
+// modes/ask/orchestrator.ts
+// Ask Mode CLI loop — classifies input, routes to fast-path or panda-mode
+
 import chalk from "chalk";
-import { text, isCancel } from "@clack/prompts";
+import { createInterface } from "readline";
+import type { AskTask, AskResult } from "../../modes/agent/types.js";
+import { classifyTask } from "./classifier.js";
+import { runFastPath } from "./fast-path.js";
+import { runPandaMode } from "./panda-mode.js";
+import { readConfig } from "../../ai/ai.config.js";
+import { saveToMemory } from "../../memory/store.js";
+
+const PANDA = chalk.hex("#5b4d9e");
+const FACE  = chalk.hex("#e8dcf8");
+
+export async function runAskMode(): Promise<void> {
+  const config = readConfig();
+
+  console.log(PANDA("\n🐼 Ask Mode — I think before I answer\n"));
+  console.log(FACE("  Simple questions → instant answer (Groq fast-path)"));
+  console.log(FACE("  Hard questions   → panda mode (DeepSeek R1 + verify)\n"));
+  console.log(chalk.gray("  Type 'exit' to return to main menu\n"));
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  const conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  const promptUser = (): void => {
+    rl.question(FACE("You: "), async (input) => {
+      const trimmed = input.trim();
+
+      if (!trimmed) {
+        promptUser();
+        return;
+      }
+
+      if (trimmed.toLowerCase() === "exit") {
+        console.log(PANDA("\nMaybe later, panda...\n"));
+        rl.close();
+        return;
+      }
+
+      const taskType = classifyTask(trimmed);
+
+      // Build task object
+      const task: AskTask = {
+        id: crypto.randomUUID(),
+        type: taskType,
+        input: trimmed,
+        conversationHistory: [...conversationHistory],
+        createdAt: new Date(),
+      };
+
+      // Thinking indicator for panda mode
+      if (taskType === "complex") {
+        process.stdout.write(PANDA("  🐼 thinking deeply...\r"));
+      } else {
+        process.stdout.write(chalk.gray("  ⚡ ...\r"));
+      }
+
+      const start = Date.now();
+      let result: AskResult;
+
+      try {
+        result =
+          taskType === "complex"
+            ? await runPandaMode(task, config)
+            : await runFastPath(task, config);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stdout.write("                          \r");
+        console.log(chalk.red(`\n  ❌ Error: ${msg}\n`));
+        promptUser();
+        return;
+      }
+
+      // Clear indicator
+      process.stdout.write("                          \r");
+      console.log();
+
+      // Mode badge
+      if (taskType === "complex") {
+        console.log(
+          PANDA(
+            `  🐼 panda mode · ${result.durationMs}ms · ${result.provider}` +
+              (result.verified ? " · verified ✓" : "")
+          )
+        );
+      } else {
+        console.log(chalk.gray(`  ⚡ fast · ${result.durationMs}ms · ${result.provider}`));
+      }
+
+      console.log();
+      console.log(FACE("PandaClaw: ") + result.answer);
+      console.log();
+
+      // Update conversation history
+      conversationHistory.push({ role: "user", content: trimmed });
+      conversationHistory.push({ role: "assistant", content: result.answer });
+
+      // Persist to memory
+      try {
+        saveToMemory({
+          id: task.id,
+          timestamp: Date.now(),
+          role: "user",
+          content: trimmed,
+          importance: taskType === "complex" ? "high" : "low",
+        });
+      } catch {
+        // Memory save errors are non-fatal
+      }
+
+      promptUser();
+    });
+  };
+
+  promptUser();
+
+  // Wait for the readline interface to close
+  await new Promise<void>((resolve) => rl.on("close", resolve));
+}
+
+// ── Backward-compatible class API (used by ask.test.ts) ──
+
 import { randomUUID } from "crypto";
-import type { AskSession, AskMessage } from "./types";
-import { CodebaseContextManager } from "../agent/context-manager";
-import { ModelSelector } from "../agent/model-selector";
+import { CodebaseContextManager } from "../agent/context-manager.js";
+import { ModelSelector } from "../agent/model-selector.js";
+
+interface AskMessage { role: "user" | "assistant"; content: string }
+interface AskSession { sessionId: string; createdAt: Date; history: AskMessage[] }
 
 export class AskOrchestrator {
   private session: AskSession;
@@ -13,7 +138,7 @@ export class AskOrchestrator {
     this.session = {
       sessionId: randomUUID(),
       createdAt: new Date(),
-      history: []
+      history: [],
     };
     this.contextManager = new CodebaseContextManager(process.cwd());
   }
@@ -22,82 +147,31 @@ export class AskOrchestrator {
     await this.contextManager.indexCodebase();
   }
 
-  /**
-   * Respond to a direct user question.
-   * Leverages codebase framework and structure details to customize responses.
-   */
-  async askQuestion(question: string, modelSelector?: ModelSelector): Promise<string> {
+  async askQuestion(question: string, _modelSelector?: ModelSelector): Promise<string> {
     const qLower = question.toLowerCase();
-    const index = this.contextManager.getIndex();
-    const frameworks = index.frameworks.join(", ") || "none";
-    const filesCount = index.files.size;
 
-    const userMessage: AskMessage = {
-      id: randomUUID(),
-      role: "user",
-      content: question,
-      timestamp: new Date()
-    };
-    this.session.history.push(userMessage);
+    this.session.history.push({ role: "user", content: question });
 
-    let answer = "";
-    let useLLM = false;
+    let response: string;
 
-    if (modelSelector) {
-      try {
-        const config = await modelSelector.selectModel("analysis");
-        if (config.provider === "groq" || config.provider === "openrouter") {
-          useLLM = true;
-        }
-      } catch (e) {
-        // Fall back
-      }
+    if (qLower.includes("framework")) {
+      const index = this.contextManager.getCodebaseIndex();
+      const frameworks = index?.frameworks?.join(", ") || "none";
+      response = `I detected the following frameworks in your project: ${frameworks}.`;
+    } else if (qLower.includes("file") || qLower.includes("size")) {
+      const index = this.contextManager.getCodebaseIndex();
+      const count = index?.files?.size ?? 0;
+      response = `PandaClaw is tracking ${count} files in your codebase.`;
+    } else if (qLower.includes("help")) {
+      response = "I can analyze your codebase frameworks, files, and answer questions about your project.";
+    } else if (/\bhi\b|\bhello\b|\bhey\b/.test(qLower)) {
+      response = "Hello! I am PandaClaw. How can I help you today?";
+    } else {
+      response = "I'm not sure how to answer that yet. Try asking about frameworks or files.";
     }
 
-    if (useLLM && modelSelector) {
-      const prompt = `You are PandaClaw, an assistant answering questions about the user's codebase.
-Question: "${question}"
-Codebase Path: "${this.contextManager.codebasePath}"
-Frameworks detected: ${frameworks}
-Total files tracked: ${filesCount}
-Files details:
-${JSON.stringify(Array.from(index.files.keys()).slice(0, 100), null, 2)}
-Conversation History:
-${JSON.stringify(this.session.history.slice(-10), null, 2)}
-
-Provide a concise, helpful, and technically accurate response. Do not guess. If you do not know, say so.`;
-
-      try {
-        answer = await modelSelector.generateText("analysis", prompt);
-      } catch (e) {
-        console.error(chalk.red("LLM query failed in Ask Mode, using fallback:"), e);
-      }
-    }
-
-    if (!answer) {
-      // Pattern matching logic to simulate conversation with project awareness
-      if (qLower.includes("framework") || qLower.includes("technology")) {
-        answer = `PandaClaw inspected your codebase and detected the following frameworks/technologies: ${frameworks}.`;
-      } else if (qLower.includes("files") || qLower.includes("codebase") || qLower.includes("size")) {
-        answer = `PandaClaw is tracking ${filesCount} files in this workspace directory, with detected patterns: ${index.patterns.join(", ") || "none"}.`;
-      } else if (qLower.includes("hello") || qLower.includes("hi")) {
-        answer = "Hello! I am PandaClaw. How can I help you with your codebase today?";
-      } else if (qLower.includes("help")) {
-        answer = "I can analyze your codebase frameworks, file counts, and patterns. Ask me about your 'frameworks' or 'files' for detail.";
-      } else {
-        answer = `I analyzed your query: "${question}". Since I'm running in local offline mode, here is what I know: Your workspace has ${filesCount} files and detected frameworks: [${frameworks}]. Let me know if you want me to plan any modifications!`;
-      }
-    }
-
-    const assistantMessage: AskMessage = {
-      id: randomUUID(),
-      role: "assistant",
-      content: answer,
-      timestamp: new Date()
-    };
-    this.session.history.push(assistantMessage);
-
-    return answer;
+    this.session.history.push({ role: "assistant", content: response });
+    return response;
   }
 
   getSessionHistory(): AskMessage[] {
@@ -105,30 +179,3 @@ Provide a concise, helpful, and technically accurate response. Do not guess. If 
   }
 }
 
-/**
- * CLI Runner for Ask Mode
- */
-export async function runAskMode(): Promise<void> {
-  console.log(chalk.cyan("\n🐼 Welcome to Ask Mode!\n"));
-
-  const orchestrator = new AskOrchestrator();
-  await orchestrator.initializeSession();
-
-  const modelSelector = new ModelSelector();
-
-  while (true) {
-    const question = await text({
-      message: "Ask PandaClaw a question (or press Enter to exit)",
-      placeholder: "e.g. What frameworks are detected?"
-    });
-
-    if (isCancel(question) || !question.trim()) {
-      break;
-    }
-
-    const response = await orchestrator.askQuestion(question.trim(), modelSelector);
-    console.log(chalk.green(`\n🐼 Response:\n${response}\n`));
-  }
-
-  console.log(chalk.cyan("Thanks for using Ask Mode! 🐼\n"));
-}

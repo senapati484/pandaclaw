@@ -1,3 +1,5 @@
+// modes/cli.ts
+
 import chalk from "chalk";
 import { select, isCancel } from "@clack/prompts";
 

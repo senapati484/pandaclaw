@@ -123,7 +123,12 @@ export class AgentOrchestrator {
             });
 
             // Phase 5: VALIDATE - Check if mutation worked
-            const action = this.tracker.getActions()[this.tracker.getActions().length - 1];
+            const actions = this.tracker.getActions();
+            const action = actions[actions.length - 1];
+            if (!action) {
+              console.log(chalk.yellow("  ⚠ No action logged for this mutation."));
+              continue;
+            }
             const validation = await this.reflectionEngine.validateMutation(action, result);
 
             if (!validation.valid) {
@@ -143,10 +148,11 @@ export class AgentOrchestrator {
               },
             });
 
-            this.tracker.updateStatus(
-              this.tracker.getActions()[this.tracker.getActions().length - 1].id,
-              "rejected"
-            );
+            const actions2 = this.tracker.getActions();
+            const lastAction = actions2[actions2.length - 1];
+            if (lastAction) {
+              this.tracker.updateStatus(lastAction.id, "rejected");
+            }
           }
         }
 
@@ -194,8 +200,8 @@ export class AgentOrchestrator {
     console.log(chalk.gray(`  Frameworks detected: ${index.frameworks.join(", ") || "none"}`));
 
     if (this.memory) {
-      const summary = this.memory.getSummary();
-      console.log(chalk.gray(`  Cached constraints: ${summary.constraintCount}`));
+      const summary = this.memory.getSummary() as Record<string, unknown>;
+      console.log(chalk.gray(`  Cached constraints: ${summary["constraintCount"] ?? 0}`));
     }
   }
 
@@ -250,11 +256,13 @@ export class AgentOrchestrator {
     // Learn from recent actions
     if (executed.length > 0) {
       const recent = executed[executed.length - 1];
-      this.memory.addReflection(
-        `Executed ${recent.type} on ${recent.path}`,
-        "Continue with next step",
-        0.8
-      );
+      if (recent) {
+        this.memory.addReflection(
+          `Executed ${recent.type} on ${recent.path}`,
+          "Continue with next step",
+          0.8
+        );
+      }
     }
   }
 

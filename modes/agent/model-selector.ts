@@ -51,7 +51,7 @@ export class ModelSelector {
       prompt,
       system: systemPrompt,
       temperature: config.temperature,
-      maxTokens: config.maxTokens,
+      maxOutputTokens: config.maxTokens,
     });
 
     return text;

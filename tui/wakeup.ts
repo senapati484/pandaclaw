@@ -1,3 +1,5 @@
+// tui/wakeup.ts
+
 import { select, isCancel } from "@clack/prompts";
 import chalk from "chalk";
 import figlet from "figlet";
@@ -51,7 +53,8 @@ export async function runWakeup () {
     if (mode === "cli") {
         await runCli();
     } else if (mode === "telegram") {
-        console.log(FACE(`\nLet's start with Telegram! 🎉`));
+        const { runTelegramMode } = await import("../modes/telegram/bot.js");
+        await runTelegramMode();
     } else if (mode === "exit") {
         console.log(SHADOW("Goodbye, panda! 👋"));
         (globalThis as any).process.exit(0);

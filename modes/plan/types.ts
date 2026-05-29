@@ -47,6 +47,7 @@ export interface Plan {
   estimatedRisk: RiskLevel;
   validation?: ValidationResult;
   optimization?: OptimizationResult;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LearnedConstraint {
