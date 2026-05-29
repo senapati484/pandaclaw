@@ -53,8 +53,10 @@ export async function runWakeup () {
     if (mode === "cli") {
         await runCli();
     } else if (mode === "telegram") {
-        const { runTelegramMode } = await import("../modes/telegram/bot.js");
-        await runTelegramMode();
+        const { Gateway } = await import("../modes/gateway/index.js");
+        const gateway = new Gateway();
+        await gateway.start();
+        await new Promise<never>(() => {});
     } else if (mode === "exit") {
         console.log(SHADOW("Goodbye, panda! 👋"));
         (globalThis as any).process.exit(0);

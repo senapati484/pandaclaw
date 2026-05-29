@@ -1,10 +1,10 @@
 // tools/code-exec.ts
-// Executes TypeScript/JavaScript in a temp file using Bun with a timeout
+// Executes TypeScript/JavaScript in a temp file using BunSandbox with a timeout
 
 import type { ToolDefinition } from "../modes/agent/types.js";
-import { execSync } from "child_process";
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from "fs";
 import path from "path";
+import { BunSandbox } from "../sandbox/index.js";
 
 export const codeExecTool: ToolDefinition = {
   name: "code_exec",
@@ -27,13 +27,21 @@ export const codeExecTool: ToolDefinition = {
     try {
       writeFileSync(tmpFile, code, "utf8");
 
-      const stdout = execSync(`bun run ${tmpFile}`, {
-        timeout,
+      const sandbox = new BunSandbox();
+      const result = await sandbox.execute(["bun", "run", tmpFile], {
         cwd: workspacePath,
-        encoding: "utf8",
+        timeoutMs: timeout,
       });
 
-      return { stdout: stdout.trim(), exitCode: 0 };
+      if (result.exitCode === 0) {
+        return { stdout: result.stdout, exitCode: 0 };
+      } else {
+        return {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        };
+      }
     } catch (err: unknown) {
       const e = err as { stdout?: string; stderr?: string; message?: string };
       return {
@@ -50,3 +58,4 @@ export const codeExecTool: ToolDefinition = {
     }
   },
 };
+

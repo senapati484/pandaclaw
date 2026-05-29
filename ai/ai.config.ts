@@ -26,6 +26,7 @@ export interface PandaConfig {
   memory?: { path: string; maxEntries: number; maxLongTermFacts?: number };
   audit?:  { path: string; enabled: boolean };
   telegram?: { token: string; allowed_users: number[] };
+  slack?: { webhook_url: string };
   agent?: {
     maxIterations: number;
     autoExecutePaths: string[];

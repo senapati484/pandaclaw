@@ -17,13 +17,29 @@ function ensureDir(): void {
 export function loadMemory(): PersistentMemory {
   ensureDir();
 
+  const graphPath = path.join(path.dirname(MEMORY_PATH), "KNOWLEDGE_GRAPH.md");
+  const graphFacts: MemoryEntry[] = [];
+  if (existsSync(graphPath)) {
+    try {
+      const graphText = readFileSync(graphPath, "utf8");
+      // Add graph text segments as long term facts
+      graphFacts.push({
+        id: "graph_consolidated",
+        timestamp: Date.now(),
+        role: "assistant",
+        content: graphText,
+        importance: "high",
+      });
+    } catch {}
+  }
+
   if (!existsSync(MEMORY_PATH)) {
     return {
       sessionCount: 0,
       lastSeen: Date.now(),
       userPreferences: {},
       recentEntries: [],
-      longTermFacts: [],
+      longTermFacts: graphFacts,
     };
   }
 
@@ -44,7 +60,10 @@ export function loadMemory(): PersistentMemory {
     lastSeen: Date.now(),
     userPreferences: {},
     recentEntries: entries.slice(-50),
-    longTermFacts: entries.filter((e) => e.importance === "high"),
+    longTermFacts: [
+      ...graphFacts,
+      ...entries.filter((e) => e.importance === "high"),
+    ],
   };
 }
 
