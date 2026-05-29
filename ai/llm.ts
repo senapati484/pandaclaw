@@ -51,7 +51,7 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
         },
         body: JSON.stringify({
           model,
-          messages: options.messages,
+          messages: sanitizeMessages(options.messages),
           tools: options.tools,
           tool_choice: options.tool_choice,
           temperature: options.temperature ?? 0.1,
@@ -69,7 +69,6 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
             if (errJson?.error?.code === "tool_use_failed" && errJson?.error?.failed_generation) {
               const fakeData = patchGroqToolCall(errJson.error.failed_generation);
               if (fakeData) {
-                console.log(chalk.yellow(`      [Groq Patch] Successfully intercepted and parsed failed tool call generation.`));
                 return fakeData;
               }
             }
@@ -86,7 +85,6 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
       if (providerName === "groq" && msg?.content && (!msg.tool_calls || msg.tool_calls.length === 0)) {
         const parsed = parseTextToolCall(msg.content);
         if (parsed) {
-          console.log(chalk.yellow(`      [Groq Patch] Parsed tool call from text content.`));
           data.choices[0].message = {
             role: "assistant",
             tool_calls: [
@@ -102,12 +100,33 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
 
       return data;
     } catch (err: any) {
-      console.log(chalk.yellow(`      [LLM Fallback Warning] Provider ${providerName} failed: ${err.message || err}. Trying next...`));
       lastError = err;
     }
   }
 
   throw lastError || new Error("All LLM providers in fallback chain failed.");
+}
+
+function sanitizeMessages(messages: any[]): any[] {
+  return messages.map((m) => {
+    const clean: any = {
+      role: m.role,
+      content: m.content || null,
+    };
+    if (m.name !== undefined) clean.name = m.name;
+    if (m.tool_calls !== undefined) {
+      clean.tool_calls = m.tool_calls.map((tc: any) => ({
+        id: tc.id,
+        type: tc.type || "function",
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        },
+      }));
+    }
+    if (m.tool_call_id !== undefined) clean.tool_call_id = m.tool_call_id;
+    return clean;
+  });
 }
 
 /**
