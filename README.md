@@ -91,6 +91,26 @@ pandaclaw/
 
 ## 🛠️ Installation
 
+You can install PandaClaw using one of the three options below:
+
+### Option 1: Automated Script (Recommended)
+This script checks for/installs Bun, clones the repository locally, registers the executable globally, and initializes your configuration:
+```bash
+curl -fsSL https://raw.githubusercontent.com/senapati484/pandaclaw/main/install.sh | bash
+```
+
+### Option 2: via npm / Bun
+If you are installing PandaClaw from the public npm registry:
+```bash
+# Global install using Bun (native runtime)
+bun install -g pandaclaw
+
+# Or global install using npm
+npm install -g pandaclaw
+```
+
+### Option 3: Manual Clone (Development)
+For local development:
 ```bash
 # Clone the repository
 git clone https://github.com/senapati484/pandaclaw
@@ -99,16 +119,21 @@ cd pandaclaw
 # Install Bun dependencies
 bun install
 
-# Link the binary globally
-bun link
+# Link the binary globally to PATH
+npm install -g .
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-Create or modify `config.json` at the root of the workspace:
+Start the interactive setup wizard to configure your model providers, API keys, and gateways:
+```bash
+pandaclaw setup
+```
+The wizard will ask you whether to save the configuration **Globally** (`~/.pandaclaw/config.json`) or **Locally** (`./config.json` inside your current directory).
 
+You can also create or edit `config.json` manually:
 ```json
 {
   "providers": {
@@ -132,7 +157,7 @@ Create or modify `config.json` at the root of the workspace:
 }
 ```
 
-*You can also set these keys via environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`).*
+*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`) will override `config.json` settings.*
 
 ---
 

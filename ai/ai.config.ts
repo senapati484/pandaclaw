@@ -34,14 +34,21 @@ export interface PandaConfig {
   };
 }
 
+import os from "os";
+
 let _config: PandaConfig | null = null;
 
 export function readConfig(): PandaConfig {
   if (_config) return _config;
 
-  const configPath = path.join(process.cwd(), "config.json");
+  let configPath = path.join(process.cwd(), "config.json");
   if (!existsSync(configPath)) {
-    throw new Error("config.json not found. Copy config.example.json and fill in your API keys.");
+    const globalPath = path.join(os.homedir(), ".pandaclaw", "config.json");
+    if (existsSync(globalPath)) {
+      configPath = globalPath;
+    } else {
+      throw new Error("config.json not found. Please run \"pandaclaw setup\" to configure your API keys.");
+    }
   }
 
   const file = JSON.parse(readFileSync(configPath, "utf8")) as PandaConfig;

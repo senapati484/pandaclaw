@@ -1,14 +1,33 @@
 // tui/setup.ts
 
-import { intro, outro, text, password, select } from "@clack/prompts";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { intro, outro, text, password, select, isCancel } from "@clack/prompts";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import path from "path";
+import os from "os";
 import chalk from "chalk";
 
 export async function runSetup(): Promise<void> {
   intro(chalk.bold.cyan("🐼 PandaClaw Configuration Setup Wizard 🐼"));
 
-  const configPath = path.join(process.cwd(), "config.json");
+  const scope = await select({
+    message: "Configure PandaClaw globally or locally for this project?",
+    options: [
+      { value: "global", label: "Globally (~/.pandaclaw/config.json)" },
+      { value: "local", label: "Locally (./config.json)" },
+    ],
+  });
+
+  if (isCancel(scope)) {
+    outro(chalk.yellow("Setup cancelled."));
+    return;
+  }
+
+  const isGlobal = scope === "global";
+  const configDir = isGlobal 
+    ? path.join(os.homedir(), ".pandaclaw") 
+    : process.cwd();
+  
+  const configPath = path.join(configDir, "config.json");
   let config: any = {};
 
   if (existsSync(configPath)) {
@@ -16,6 +35,14 @@ export async function runSetup(): Promise<void> {
       config = JSON.parse(readFileSync(configPath, "utf8"));
     } catch {
       console.log(chalk.yellow("Warning: config.json was corrupted. Creating a new one."));
+    }
+  } else if (isGlobal) {
+    try {
+      if (!existsSync(configDir)) {
+        mkdirSync(configDir, { recursive: true });
+      }
+    } catch (err: any) {
+      console.log(chalk.red(`Error creating global config directory: ${err.message}`));
     }
   }
 
@@ -145,8 +172,8 @@ export async function runSetup(): Promise<void> {
   // Write changes
   try {
     writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
-    outro(chalk.bold.green("✨ PandaClaw setup completed and saved to config.json! ✨"));
+    outro(chalk.bold.green(`✨ PandaClaw setup completed and saved to ${isGlobal ? "~/.pandaclaw/config.json" : "config.json"}! ✨`));
   } catch (err: any) {
-    outro(chalk.bold.red(`Error writing config.json: ${err.message}`));
+    outro(chalk.bold.red(`Error writing configuration file: ${err.message}`));
   }
 }

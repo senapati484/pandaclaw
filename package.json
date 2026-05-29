@@ -1,14 +1,29 @@
 {
   "name": "pandaclaw",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "bin": {
+    "pandaclaw": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "package.json",
+    "tsconfig.json",
+    "config.json",
+    "ai",
+    "canvas",
+    "fs",
+    "memory",
+    "modes",
+    "sandbox",
+    "tools",
+    "tui",
+    "vision"
+  ],
   "scripts": {
     "dev": "bun run index.ts",
     "dashboard": "bun run canvas/server.ts"
-  },
-  "bin": {
-    "pandaclaw": "./index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
