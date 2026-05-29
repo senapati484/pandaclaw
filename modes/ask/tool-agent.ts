@@ -7,6 +7,7 @@ import path from "path";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
+import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
 
 export interface ToolAgentResult {
   answer: string;
@@ -167,7 +168,7 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     name: "nvidia_nim",
     base: config.providers.nvidia_nim.api_base,
     key: config.providers.nvidia_nim.api_key,
-    model: "meta/llama-3.1-8b-instruct",              // Fast NIM model, plain text only
+    model: NIM_MODELS.chat_large,    // mistral-large-3-675b — best free NIM model
     headers: {} as Record<string, string>,
     withTools: false,   // ← NIM doesn't support tool calling; skip tools param
   },

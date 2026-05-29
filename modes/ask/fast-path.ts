@@ -1,8 +1,9 @@
 // modes/ask/fast-path.ts
-// Fast-path LLM call with automatic provider fallback (Groq → OpenRouter → Nvidianim)
+// Fast-path LLM call — Groq → OpenRouter → NIM (mistral-large-3)
 
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
+import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -96,8 +97,8 @@ export async function runFastPath(
       tryProvider(
         config.providers.nvidia_nim.api_base,
         config.providers.nvidia_nim.api_key,
-        // nvidia/llama-3.1-nemotron-70b-instruct — free NIM endpoint, high quality
-        "nvidia/llama-3.1-nemotron-70b-instruct",
+        // Best free NIM model: MoE 675B, ideal for reasoning and agentic tasks
+        NIM_MODELS.chat_large,   // mistralai/mistral-large-3-675b-instruct-2512
         messages,
         maxTokens,
         temperature
