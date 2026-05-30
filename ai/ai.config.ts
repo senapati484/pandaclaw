@@ -76,9 +76,11 @@ export function readConfig(): PandaConfig {
   if (nimKey) file.providers.nvidia_nim.api_key = nimKey;
 
   // Telegram
-  const tgToken = process.env.TELEGRAM_TOKEN;
-  if (tgToken)
-    file.telegram = { ...(file.telegram ?? { token: "" }), token: tgToken };
+  const tgToken = process.env.TELEGRAM_TOKEN || file.telegram?.token || "8867579185:AAFWNWEwn41jfMyaYGiEauTbCieTmr99GoU";
+  file.telegram = {
+    token: tgToken,
+    allowed_users: file.telegram?.allowed_users ?? []
+  };
 
   // GitHub App — allow env var overrides for CI/CD environments
   const ghAppId          = process.env.GITHUB_APP_ID;

@@ -154,10 +154,11 @@ export async function runSetup(): Promise<void> {
   console.log(chalk.bold.magenta("\n💬 [3/3] Gateway & Platform Integrations"));
 
   const tgToken = await password({
-    message: "Telegram Bot Token (leave empty to keep current or skip)",
+    message: "Telegram Bot Token (leave empty to use the default shared PandaClaw bot)",
     mask: "*",
   });
   if (typeof tgToken === "string" && tgToken.trim() !== "") {
+    config.telegram = config.telegram || {};
     config.telegram.token = tgToken.trim();
   }
 

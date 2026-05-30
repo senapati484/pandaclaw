@@ -87,9 +87,6 @@
     "path": ".pandaclaw/audit.jsonl",
     "enabled": true
   },
-  "telegram": {
-    "token": ""
-  },
   "agent": {
     "maxIterations": 20,
     "autoExecutePaths": [

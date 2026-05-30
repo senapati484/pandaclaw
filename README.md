@@ -166,14 +166,11 @@ You can also create or edit `config.json` manually:
       "api_key": "YOUR_NVIDIA_NIM_KEY",
       "api_base": "https://integrate.api.nvidia.com/v1"
     }
-  },
-  "telegram": {
-    "token": "YOUR_BOTFATHER_TOKEN"
   }
 }
 ```
 
-*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`) will override `config.json` settings. Telegram allowed users can pair dynamically in the chat without modifying `config.json`.*
+*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`) will override `config.json` settings. No Telegram Token configuration is required! PandaClaw has a shared default bot token built directly into the codebase. You can immediately message [@pandaclawbot](https://t.me/pandaclawbot) on Telegram and securely pair your device without any manual BotFather setup.*
 
 ---
 
