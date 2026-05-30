@@ -222,3 +222,39 @@ function createFakeCompletionsPayload(toolName: string, toolArgs: string): any {
     ]
   };
 }
+
+/**
+ * Transcribe an audio recording using Groq's Whisper API.
+ * High-performance, low latency voice-to-text.
+ */
+export async function transcribeAudio(
+  audioBuffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  apiKey: string
+): Promise<string> {
+  if (!apiKey) {
+    throw new Error("Missing Groq API Key for transcription");
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+  formData.append("file", blob, fileName);
+  formData.append("model", "whisper-large-v3");
+
+  const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Groq Whisper transcription failed (${response.status}): ${errorText}`);
+  }
+
+  const result = (await response.json()) as { text: string };
+  return result.text.trim();
+}

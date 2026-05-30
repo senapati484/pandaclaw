@@ -142,7 +142,29 @@ export class Gateway {
         // Log to console
         console.log(chalk.hex("#5b4d9e")(`\n🐼 [Telegram] ${msg.senderName}: ${userText.slice(0, 80)}`));
 
-        const result = await runToolAgent(userText, this.config, toolCtx);
+        // Classify the task type (simple vs complex)
+        const { classifyTask } = await import("../ask/classifier.js");
+        const taskType = classifyTask(userText);
+
+        let result;
+        if (taskType === "simple") {
+          const { runFastPath } = await import("../ask/fast-path.js");
+          const task = {
+            id: crypto.randomUUID(),
+            type: "simple" as const,
+            input: userText,
+            conversationHistory: [],
+            createdAt: new Date(),
+          };
+          const fastResult = await runFastPath(task, this.config);
+          result = {
+            answer: fastResult.answer,
+            toolsUsed: [] as string[],
+            durationMs: fastResult.durationMs,
+          };
+        } else {
+          result = await runToolAgent(userText, this.config, toolCtx);
+        }
 
         const toolBadge =
           result.toolsUsed.length > 0

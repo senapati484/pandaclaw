@@ -79,8 +79,71 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     });
 
+    // Helper to handle voice and audio messages
+    const handleAudio = async (
+      msg: any,
+      fileId: string,
+      mimeType: string,
+      defaultFileName: string
+    ) => {
+      if (!this.bot || !this.messageCallback) return;
+      if (!msg.from || !this.isAllowed(msg.from.id)) {
+        await this.sendPairingRequest(msg.chat.id);
+        return;
+      }
+
+      try {
+        await this.bot.sendChatAction(msg.chat.id, "typing");
+
+        const fileLink = await this.bot.getFileLink(fileId);
+        const res = await fetch(fileLink);
+        if (!res.ok) throw new Error("Failed to download audio file");
+
+        const arrayBuf = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+
+        const groqApiKey = this.config.providers.groq.api_key;
+        if (!groqApiKey) {
+          throw new Error("Groq API key is required to process voice messages.");
+        }
+
+        const { transcribeAudio } = await import("../../../ai/llm.js");
+        const text = await transcribeAudio(buffer, mimeType, defaultFileName, groqApiKey);
+
+        if (!text) {
+          await this.bot.sendMessage(msg.chat.id, "🐼 I couldn't hear or transcribe any speech in that audio.");
+          return;
+        }
+
+        // Notify user of successful transcription
+        await this.bot.sendMessage(msg.chat.id, `🎙 *Transcribed:* _"${text}"_`, { parse_mode: "Markdown" });
+
+        const channelMsg: ChannelMessage = {
+          id: msg.message_id.toString(),
+          senderId: msg.from.id.toString(),
+          senderName: msg.from.first_name || "Unknown",
+          text: text,
+          chatId: msg.chat.id.toString(),
+        };
+
+        await this.messageCallback(channelMsg);
+      } catch (err: any) {
+        await this.bot.sendMessage(msg.chat.id, `❌ Error processing voice message: ${err.message}`);
+      }
+    };
+
+    this.bot.on("voice", async (msg) => {
+      if (!msg.voice) return;
+      await handleAudio(msg, msg.voice.file_id, msg.voice.mime_type || "audio/ogg", "voice.ogg");
+    });
+
+    this.bot.on("audio", async (msg) => {
+      if (!msg.audio) return;
+      await handleAudio(msg, msg.audio.file_id, msg.audio.mime_type || "audio/mpeg", "audio.mp3");
+    });
+
     this.bot.on("message", async (msg) => {
-      if (!this.bot || msg.photo) return;
+      if (!this.bot || msg.photo || msg.voice || msg.audio) return;
       if (!msg.from) return;
 
       const text = msg.text?.trim() || "";
