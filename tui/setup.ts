@@ -55,7 +55,7 @@ export async function runSetup(): Promise<void> {
   config.routing = config.routing || {};
   config.routing.fast_path = config.routing.fast_path || { provider: "groq", model: "llama-3.3-70b-versatile", temperature: 0.1, maxTokens: 2048 };
   config.routing.panda_mode = config.routing.panda_mode || { provider: "openrouter", model: "deepseek/deepseek-r1", temperature: 0.1, maxTokens: 8192 };
-  config.routing.planning = config.routing.planning || { provider: "openrouter", model: "deepseek/deepseek-chat-v3-0324", temperature: 0.2, maxTokens: 4096 };
+  config.routing.planning = config.routing.planning || { provider: "openrouter", model: "deepseek/deepseek-chat", temperature: 0.2, maxTokens: 4096 };
   config.routing.fallback_chain = config.routing.fallback_chain || ["groq", "openrouter", "nvidia_nim"];
 
   config.tools = config.tools || {};

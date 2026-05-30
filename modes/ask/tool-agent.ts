@@ -277,7 +277,7 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     name: "openrouter",
     base: config.providers.openrouter.api_base,
     key:  config.providers.openrouter.api_key,
-    model: "mistralai/mistral-7b-instruct:free",
+    model: "openrouter/free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",

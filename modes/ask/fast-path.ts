@@ -138,7 +138,7 @@ export async function runFastPath(
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        "deepseek/deepseek-chat-v3-0324:free",
+        "openrouter/free",
         messages,
         maxTokens,
         temperature,

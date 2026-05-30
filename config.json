@@ -28,7 +28,7 @@
     },
     "planning": {
       "provider": "openrouter",
-      "model": "deepseek/deepseek-chat-v3-0324",
+      "model": "deepseek/deepseek-chat",
       "temperature": 0.2,
       "maxTokens": 4096
     },
