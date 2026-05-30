@@ -37,7 +37,9 @@ Pre-fill the menu commands for a highly professional user experience:
 
 ## 🔒 Part 2: Secure Dynamic Device Pairing
 
-To keep PandaClaw secure, it must only execute instructions coming from **your** authorized Telegram ID. Instead of forcing you to hunt down your numeric Telegram `chatId` manually and paste it into config files, we implement a **Dynamic Passkey Binding** scheme.
+To keep PandaClaw secure, it must only execute instructions coming from **your** authorized Telegram ID. Instead of forcing you to hunt down your numeric Telegram `chatId` manually and paste it into committed config files, we implement a **Dynamic Passkey Binding** scheme.
+
+For security, paired user IDs are saved exclusively in a local, gitignored file (**`.pandaclaw/paired-users.json`**) so you never accidentally commit your Telegram account IDs to public repositories.
 
 ### 🔄 Pairing Architecture Diagram
 
@@ -47,13 +49,13 @@ sequenceDiagram
     participant Local as 💻 Local Terminal (PandaClaw)
     participant Bot as 🤖 Telegram Bot API
     
-    Local->>Local: Generate random 6-digit passkey (e.g. 582938)
+    Local->>Local: Generate random passkey (e.g. 582-938)
     Local->>Local: Print pairing banner with passkey in Terminal
     User->>Bot: Open chat & click /start
     Bot->>User: "Send '/pair <passkey>' to bind your device"
-    User->>Bot: Send: /pair 582938
+    User->>Bot: Send: /pair 582-938
     Bot->>Local: Validate passkey
-    Local->>Local: Match found! Save Telegram User ID in config.json
+    Local->>Local: Match found! Save Telegram User ID in .pandaclaw/paired-users.json
     Local->>Bot: Success callback
     Bot->>User: "🎉 Device paired successfully! You are now authorized."
     Local->>Local: Render console alert: "✓ Paired with @username"
@@ -67,7 +69,7 @@ sequenceDiagram
     ```
     *(Choose Telegram gateway option)*
 2.  **Generate & Print Passkey**:
-    The terminal generates a temporary 6-digit token (e.g. `582-938`) and holds it in volatile memory. It prints a beautiful, rounded purple pairing card:
+    If no users are authorized yet on this device, the terminal generates a temporary 6-digit token (e.g. `582-938`) and holds it in volatile memory. It prints a beautiful, rounded purple pairing card:
     ```text
     ╭──────────────────────────────────────────────────────────╮
     │ 🐼 Pair your Telegram Bot                                │
@@ -81,8 +83,8 @@ sequenceDiagram
     Open Telegram and message your bot: `/pair 582-938`.
 4.  **Confirm and Save**:
     *   The bot validates the code.
-    *   If correct, it appends your Telegram numeric `chatId` to the `telegram.allowed_users` list inside `config.json` (or `~/.pandaclaw/config.json`).
-    *   Saves the config file back to disk instantly.
+    *   If correct, it appends your Telegram numeric `chatId` to the `users` list inside `.pandaclaw/paired-users.json`.
+    *   Saves the config file back to your device local state instantly.
     *   The terminal prints: `✓ Device paired successfully with Telegram user @username (ID: 12345678)`.
     *   The bot replies on Telegram: `🎉 Connection established! Your device is now paired and secured.`
 
@@ -90,17 +92,17 @@ sequenceDiagram
 
 ## 🛠️ Part 3: Implementation Strategy
 
-To implement this plan, the following modifications will be carried out:
+PandaClaw implements pairing with maximum portability:
 
-### 1. `modes/gateway/adapters/telegram.ts` (Modify)
-*   Add a local variable `pairingCode: string | null = null`.
-*   Generate a code on initialization if `allowed_users` is empty.
-*   In the `"message"` listener, check if the text starts with `/pair`.
-*   Parse `/pair <code>`. Validate against `pairingCode`.
+### 1. `modes/gateway/adapters/telegram.ts`
+*   Maintains a local variable `pairingCode: string | null = null`.
+*   Generates a pairing code on initialization if no users are in `config.json` allowed list or locally saved pairing list.
+*   In the `"message"` listener, checks if the text starts with `/pair`.
+*   Parses `/pair <code>`. Validates against `pairingCode`.
 *   On successful match:
-    1. Update the `allowedUsers` list.
-    2. Write the updated `config.json` array.
-    3. Return a success message and log to console.
+    1. Saves the numeric ID to the local **`.pandaclaw/paired-users.json`** file.
+    2. Updates in-memory authorized lists.
+    3. Return a success message and logs to console.
 
-### 2. `tui/wakeup.ts` (Modify)
-*   Enhance instructions in gateway startup TUI to print the gorgeous rounded pairing card if no users are paired yet.
+### 2. `.gitignore`
+*   Explicitly ignores `.pandaclaw/paired-users.json` to keep device-local settings isolated and prevent committed token leaks.

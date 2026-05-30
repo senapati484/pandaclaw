@@ -20,7 +20,7 @@
 
 **PandaClaw** is a *deliberate, reasoning-first, and vision-native personal AI assistant* built on Bun. 
 
-Unlike traditional agents that act instantly, PandaClaw operates with strict planning, multi-agent worker coordination, Git transaction boundaries, and a live visual canvas dashboard you run locally. If you want a Single-User Assistant that feels local, safe, highly thoughtful, and visually interactive—PandaClaw is it.
+Unlike traditional agents that act instantly, PandaClaw operates with strict planning, multi-agent worker coordination, Git transaction boundaries, a live visual canvas dashboard, and an integrated multi-channel gateway (Telegram, Slack, WebChat) with native voice parsing and macOS alarm utilities.
 
 ---
 
@@ -39,21 +39,37 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
     *   `visualizer`: Extracts spatial layout elements or builds UI reports.
 *   **R1 Reasoning Compiler**: Extracts and parses structured DeepSeek R1 `<think>` traces and applies critique-correction verification loops.
 
-### 🎨 3. Local Visual Web Canvas
+### 🧠 3. PandaGraph Semantic Memory Engine
+*   **Persistent Chat History**: Every message (user and assistant) is saved to `.pandaclaw/chats.jsonl` indexed by `chatId`. Conversation history persists seamlessly across gateway restarts!
+*   **Knowledge Graph (Triplet Store)**: Semantic facts (user preferences, configurations, constraints, success patterns) are extracted and saved as relationships (`subject`, `predicate`, `object`) inside `.pandaclaw/graph_memory.json`.
+*   **Auto-Sync Markdown**: Graph states are automatically formatted into a gorgeous, human-friendly document under **`.pandaclaw/KNOWLEDGE_GRAPH.md`** whenever the graph is modified.
+*   **TF-IDF Semantic Recall**: An in-process keyword matching and term weight scorer (`recallRelevantRelations`) retrieves facts locally in **< 1ms** with zero API cost, keeping prompt contexts ultra-lean and relevant.
+*   **Async Background Consolidation**: Every **3 messages**, the gateway automatically spawns a non-blocking background consolidation task to extract new facts from raw logs and write them to the graph without delaying user chat responses.
+
+### ⚡ 4. Token Minimization & JSON Compression
+*   **`compressJson` Utility**: Any JSON structure returned from tools is recursively processed to strip all spacing, newlines, and pretty-print formatting.
+*   - Slices and prunes long arrays to a maximum of 15 items.
+  - Truncates excessively long text values (strings >250 characters, e.g. base64 images or raw HTML scrapes) to prevent token bloat.
+  - Prunes deep nested elements beyond depth 5.
+*   **Minified Storage**: All system-generated JSON files (e.g. `graph_memory.json` and `paired-users.json`) are stored in minified format on disk for fast read/write times.
+
+### 🎙️ 5. Native Voice & Audio processing
+*   **Groq Whisper Integration**: Converts speech buffers (OGG, OPUS, MP3, WAV, MPEG) into text in **< 1 second** using Groq's high-performance `whisper-large-v3` endpoint.
+*   **Gateway Adapters Support**: When a voice message is received from a paired Telegram user, the bot automatically downloads, transcribes, previews, and processes it inside the agent pipeline.
+
+### 🎨 6. Local Visual Web Canvas
 *   Serve a premium glassmorphic dashboard locally on `http://localhost:18789`.
 *   **Chat Interface**: Real-time messaging with visual thinking traces.
 *   **Visual Canvas**: Real-time canvas overlay rendering bounding box coordinates from the vision locating pipeline.
 *   **Terminal & Diff Viewer**: Live system websocket logs with interactive Accept/Decline approval keys for file mutations.
 
-### 🧠 4. Self-Consolidating Episodic Memory Graph
-*   An idle compiler parses raw logs and uses Groq to structure entity constraints, success patterns, and lessons directly to `.pandaclaw/KNOWLEDGE_GRAPH.md`.
-*   The Knowledge Graph is automatically loaded as contextual facts for subsequent tasks.
-
-### ⚡ 5. Unified Pluggable Event Gateway
-*   Abstracted channel adapter layer supporting pluggable integrations:
-    *   `telegram`: Polling Telegram API routing text prompts and downloaded photo buffers.
-    *   `slack`: POST webhook event ingestion and channel posts.
-    *   `webchat`: Direct message routing from the local canvas dashboard.
+### ⚡ 7. Pluggable Gateway & 3-Way Routing
+*   Abstracted channel adapter layer supporting pluggable integrations (`telegram`, `slack`, `webchat`).
+*   **Allowed Users Pairing**: Paired Telegram user IDs are stored per-device in `.pandaclaw/paired-users.json` (gitignored), ensuring committed configuration files are never contaminated or leaked.
+*   **3-Way Classifier**: Routes queries dynamically:
+    - `simple`  → snappier direct answering without tools (`runFastPath`).
+    - `complex` → deep reasoning path using DeepSeek R1 compiler (`runPandaMode`).
+    - `action`  → agentic tool-use loops (`runToolAgent`) with full filesystem/shell access.
 
 ---
 
@@ -62,17 +78,18 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
 ```
 pandaclaw/
 ├── index.ts                    # CLI Entrypoint (Commander)
-├── config.json                 # Gateway & API Keys Config
+├── config.json                 # Gateway & API Keys Config (Shared)
 ├── ai/
 │   ├── ai.config.ts            # Config Parser with Env Overrides
+│   ├── context-compressor.ts   # Minification, Slicing & JSON Compression
 │   └── providers/
 │       ├── nvidia-nim.ts       # NIM Vision Models
 │       └── r1-compiler.ts      # DeepSeek R1 Parsing & Verifier
 ├── sandbox/                     # Bun-Native Process Sandbox
 ├── fs/                         # Transactional Git File System
 ├── memory/
-│   ├── store.ts                # JSONL Persistent Memory
-│   └── consolidator.ts         # Knowledge Graph Summarizer
+│   ├── store.ts                # Persistent Chats, Graph and Scorer
+│   └── consolidator.ts         # Triplet Relationship Summarizer
 ├── modes/
 │   ├── cli.ts                  # Interactive CLI Sub-modes
 │   ├── agent/
@@ -83,8 +100,8 @@ pandaclaw/
 │   └── gateway/                # Unified Channel Gateway & Pluggable Adapters
 ├── canvas/                     # Local Canvas Web Dashboard Server
 ├── vision/                     # 4-stage Vision Pipeline (Perceive → Locate → Reason → Act)
-├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec)
-└── tests/                      # Suite of 27 Unit Tests (Swarm, Sandbox, Transactions)
+├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec, macOS Alarms)
+└── tests/                      # Suite of 31 Unit Tests (Swarm, Sandbox, Transactions, PandaGraph)
 ```
 
 ---
@@ -152,12 +169,12 @@ You can also create or edit `config.json` manually:
   },
   "telegram": {
     "token": "YOUR_BOTFATHER_TOKEN",
-    "allowed_users": [12345678]
+    "allowed_users": []
   }
 }
 ```
 
-*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`) will override `config.json` settings.*
+*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`) will override `config.json` settings. Telegram allowed users can pair dynamically in the chat without modifying `config.json`.*
 
 ---
 
