@@ -3,8 +3,8 @@
 
 import chalk from "chalk";
 import { createInterface } from "readline";
-import type { AskTask, AskResult } from "../../modes/agent/types.js";
-import { classifyTask } from "./classifier.js";
+import type { AskTask, AskResult, ToolContext } from "../../modes/agent/types.js";
+import { classifyRoute } from "./classifier.js";
 import { runFastPath } from "./fast-path.js";
 import { runPandaMode } from "./panda-mode.js";
 import { readConfig } from "../../ai/ai.config.js";
@@ -18,7 +18,8 @@ export async function runAskMode(): Promise<void> {
 
   console.log(PANDA("\n🐼 Ask Mode — I think before I answer\n"));
   console.log(FACE("  Simple questions → instant answer (Groq fast-path)"));
-  console.log(FACE("  Hard questions   → panda mode (DeepSeek R1 + verify)\n"));
+  console.log(FACE("  Hard questions   → panda mode (DeepSeek R1 + verify)"));
+  console.log(FACE("  Action requests  → action mode (Tool Agent + direct execution)\n"));
   console.log(chalk.gray("  Type 'exit' to return to main menu\n"));
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -40,32 +41,60 @@ export async function runAskMode(): Promise<void> {
         return;
       }
 
-      const taskType = classifyTask(trimmed);
+      const route = classifyRoute(trimmed);
 
-      // Build task object
+      // Build task object for legacy and reasoning handlers
       const task: AskTask = {
         id: crypto.randomUUID(),
-        type: taskType,
+        type: route === "simple" ? "simple" : "complex",
         input: trimmed,
         conversationHistory: [...conversationHistory],
         createdAt: new Date(),
       };
 
-      // Thinking indicator for panda mode
-      if (taskType === "complex") {
+      // Thinking/acting indicator
+      if (route === "complex") {
         process.stdout.write(PANDA("  🐼 thinking deeply...\r"));
+      } else if (route === "action") {
+        process.stdout.write(PANDA("  🐼 executing actions...\r"));
       } else {
         process.stdout.write(chalk.gray("  ⚡ ...\r"));
       }
 
       const start = Date.now();
-      let result: AskResult;
+      let answer = "";
+      let durationMs = 0;
+      let provider = "";
+      let badgeInfo = "";
+      let toolsUsed: string[] = [];
 
       try {
-        result =
-          taskType === "complex"
-            ? await runPandaMode(task, config)
-            : await runFastPath(task, config);
+        if (route === "action") {
+          const { runToolAgent } = await import("./tool-agent.js");
+          const toolCtx: ToolContext = {
+            userId: "local-cli",
+            channel: "cli",
+            workspacePath: "/",
+            requestConsent: async () => true, // Pre-authorized in CLI
+          };
+          const result = await runToolAgent(trimmed, config, toolCtx);
+          answer = result.answer;
+          durationMs = result.durationMs;
+          provider = "tool-agent";
+          toolsUsed = result.toolsUsed;
+          badgeInfo = result.toolsUsed.length > 0 ? ` · tools: ${result.toolsUsed.join(", ")}` : "";
+        } else if (route === "complex") {
+          const result = await runPandaMode(task, config);
+          answer = result.answer;
+          durationMs = result.durationMs;
+          provider = result.provider;
+          badgeInfo = result.verified ? " · verified ✓" : "";
+        } else {
+          const result = await runFastPath(task, config);
+          answer = result.answer;
+          durationMs = result.durationMs;
+          provider = result.provider;
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stdout.write("                          \r");
@@ -79,24 +108,29 @@ export async function runAskMode(): Promise<void> {
       console.log();
 
       // Mode badge
-      if (taskType === "complex") {
+      if (route === "complex") {
         console.log(
           PANDA(
-            `  🐼 panda mode · ${result.durationMs}ms · ${result.provider}` +
-              (result.verified ? " · verified ✓" : "")
+            `  🐼 panda mode · ${durationMs}ms · ${provider}${badgeInfo}`
+          )
+        );
+      } else if (route === "action") {
+        console.log(
+          PANDA(
+            `  🐼 action mode · ${durationMs}ms · ${provider}${badgeInfo}`
           )
         );
       } else {
-        console.log(chalk.gray(`  ⚡ fast · ${result.durationMs}ms · ${result.provider}`));
+        console.log(chalk.gray(`  ⚡ fast · ${durationMs}ms · ${provider}`));
       }
 
       console.log();
-      console.log(FACE("PandaClaw: ") + result.answer);
+      console.log(FACE("PandaClaw: ") + answer);
       console.log();
 
       // Update conversation history
       conversationHistory.push({ role: "user", content: trimmed });
-      conversationHistory.push({ role: "assistant", content: result.answer });
+      conversationHistory.push({ role: "assistant", content: answer });
 
       // Persist to memory
       try {
@@ -105,7 +139,7 @@ export async function runAskMode(): Promise<void> {
           timestamp: Date.now(),
           role: "user",
           content: trimmed,
-          importance: taskType === "complex" ? "high" : "low",
+          importance: route === "simple" ? "low" : "high",
         });
       } catch {
         // Memory save errors are non-fatal
