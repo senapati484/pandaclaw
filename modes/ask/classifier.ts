@@ -8,10 +8,14 @@ import type { AskTaskType } from "../../modes/agent/types.js";
 
 // Patterns that require TOOL execution (file access, code exec, alarms, system tasks)
 const ACTION_PATTERNS = [
-  // File operations (Create/Write/Save)
-  /\b(write|save|create|make|generate|put|store|export)\b.*\b(file|code|script|program|text|note|doc|readme|manifest|package|json|yaml|xml)\b/i,
+  // File operations (Create/Write/Save) — verb then noun OR noun then verb
+  /\b(write|save|create|make|generate|put|store|export|add|append|insert)\b.*\b(file|code|script|program|text|note|doc|readme|manifest|package|json|yaml|xml|\.py|\.js|\.ts|\.md|\.txt|\.csv)\b/i,
+  // File operations (Edit/Modify/Update) — CRITICAL: "edit", "modify", "update" etc.
+  /\b(edit|modify|update|change|rewrite|refactor|fix|patch|replace|overwrite|revise|improve|alter|transform)\b.*\b(file|code|script|program|text|note|doc|readme|content|line|function|method|class|variable)\b/i,
+  // File name with extension → always a file operation
+  /\b\w+\.(py|js|ts|jsx|tsx|html|css|json|yaml|yml|xml|txt|md|sh|bash|go|rs|rb|java|cpp|c|h|php|swift|kt|r|csv|toml|ini|env|conf|config|log)\b/i,
   // File operations (Read/View)
-  /\b(read|open|show me|display|print|get|fetch|cat|less|more|view)\b.*\b(file|folder|directory|desktop|document|src|test|config|package|tsconfig|env|log)\b/i,
+  /\b(read|open|show me|display|print|get|fetch|cat|less|more|view|what is in|what's in|contents of)\b.*\b(file|folder|directory|desktop|document|src|test|config|package|tsconfig|env|log)\b/i,
   // File operations (Delete/Remove/Clean)
   /\b(delete|remove|erase|rm|del|discard|clear|cleanup|purge|unlink)\b.*\b(file|folder|directory|desktop|document|src|test|config|env|log|cache|temp)\b/i,
   // Path references → they mean a real file/folder operation
@@ -34,6 +38,8 @@ const ACTION_PATTERNS = [
   /\b(open|launch|close|focus|scroll|navigate|refresh|reload|tab|tabs|browser|chrome|safari|firefox|edge|msedge|opera|youtube|url|link|website|site|google|github)\b/i,
   // Keyboard/Input controls
   /\b(type|press|keystroke|shortcut|hotkey|keys|key)\b/i,
+  // Catch-all: any action word directly followed by a file path pattern
+  /\/(Users|home|tmp|var|etc|opt|usr|Desktop|Downloads|Documents)\//i,
 ];
 
 export type RouteType = "action" | "complex" | "simple";
@@ -52,14 +58,13 @@ export function classifyRoute(input: string): RouteType {
 
   const lower = input.toLowerCase();
 
-  // Complex reasoning signals
+  // Complex reasoning signals — NOTE: debug/fix/refactor ARE actions if combined with file patterns above
   const complexSignals = [
     input.length > 300,
     input.split("\n").length > 3,
     /\b(explain how|why does|how does|what is the difference between)\b/.test(lower),
     /\b(compare|analyze|summarize|research|evaluate|plan|review|strategy)\b/.test(lower),
     /\b(step by step|walk me through|in detail|comprehensively)\b/.test(lower),
-    /\b(debug|fix|refactor|optimize|test|deploy)\b/.test(lower),
     lower.includes(" and ") && lower.includes(" then "),
   ];
 
