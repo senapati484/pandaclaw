@@ -1,6 +1,8 @@
 // modes/ask/fast-path.ts
 // Fast-path LLM call — Groq → OpenRouter → NIM (mistral-large-3)
 
+import os from "os";
+import path from "path";
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
@@ -8,6 +10,34 @@ import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
   usage?: { total_tokens: number };
+}
+
+/**
+ * Build a concise, device-aware system prompt for the fast path.
+ */
+function buildFastPathSystemPrompt(): string {
+  const home     = os.homedir();
+  const username = os.userInfo().username;
+  const platform = os.platform();
+  const hostname = os.hostname();
+  const cwd      = process.cwd();
+
+  const platformNote =
+    platform === "win32"
+      ? `The user's device is a Windows machine. Use Windows paths (e.g. C:\\Users\\${username}\\Desktop) and Windows commands.`
+      : `The user's device is a ${platform === "darwin" ? "macOS" : "Linux"} machine. Use Unix paths and terminal commands.`;
+
+  return `You are PandaClaw, a helpful, concise AI assistant running locally on the user's device.
+You have access to the device details below:
+- OS Platform: ${platform} (${platformNote})
+- Username: ${username}
+- Home Directory: ${home}
+- Hostname: ${hostname}
+- Current Working Directory: ${cwd}
+
+CRITICAL RULES:
+1. Always be specific to the user's operating system (${platform}). Do not give generic Windows/macOS/Linux instructions. Only mention the steps or commands for the user's active platform (${platform}).
+2. Keep your answers brief, accurate, and direct.`;
 }
 
 /**
@@ -55,7 +85,7 @@ async function tryProvider(
   } catch (err: any) {
     clearTimeout(timeoutId);
     const isTimeout = err.name === "AbortError";
-    const errMsg = isTimeout ? "Request timed out after 3000ms" : err.message;
+    const errMsg = isTimeout ? "Request timed out after 5000ms" : err.message;
     throw new Error(errMsg);
   }
 }
@@ -69,7 +99,7 @@ export async function runFastPath(
   const messages = [
     {
       role: "system",
-      content: "You are PandaClaw, a helpful and concise AI assistant. Answer accurately and briefly.",
+      content: buildFastPathSystemPrompt(),
     },
     // Include last 6 messages (3 exchanges) for context
     ...task.conversationHistory.slice(-6),
