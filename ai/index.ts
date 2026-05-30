@@ -12,4 +12,5 @@ export {
   compressMemoryForPrompt,
   sliceContextForWorker,
   buildPromptContext,
+  compressJson,
 } from './context-compressor.ts';

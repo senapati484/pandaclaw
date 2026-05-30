@@ -6,6 +6,7 @@ import {
   recallRelevantRelations
 } from "../memory/store";
 import { existsSync, unlinkSync } from "fs";
+import { compressJson } from "../ai/context-compressor";
 
 describe("PandaGraph Memory Engine", () => {
   const chatsPath = ".pandaclaw/chats.jsonl";
@@ -105,4 +106,26 @@ describe("PandaGraph Memory Engine", () => {
     const emptyRecall = recallRelevantRelations("nonexistent query terms");
     expect(emptyRecall.length).toBe(0);
   });
+
+  test("compresses, minifies, and prunes JSON structures correctly for token optimization", () => {
+    // 1. Test minifying
+    const simple = { a: 1, b: "hello", c: [1, 2] };
+    const minified = compressJson(simple);
+    expect(minified).toBe('{"a":1,"b":"hello","c":[1,2]}');
+
+    // 2. Test string truncation (>250 chars)
+    const longString = "x".repeat(300);
+    const complex = { text: longString };
+    const compressed = JSON.parse(compressJson(complex));
+    expect(compressed.text.length).toBeLessThan(275);
+    expect(compressed.text).toContain("[truncated");
+
+    // 3. Test array truncation (>15 items)
+    const largeArray = Array.from({ length: 20 }, (_, i) => i);
+    const arrayContainer = { list: largeArray };
+    const compressedArray = JSON.parse(compressJson(arrayContainer));
+    expect(compressedArray.list.length).toBe(16); // 15 items + 1 truncation note
+    expect(compressedArray.list[15]).toContain("[truncated 5 items]");
+  });
 });
+

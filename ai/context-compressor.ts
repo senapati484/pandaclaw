@@ -238,3 +238,66 @@ export function buildPromptContext(
     .filter(Boolean)
     .join("\n\n");
 }
+
+/**
+ * Minifies and compresses any JSON string or object to be extremely token-efficient.
+ * - Strips all spaces, indentation, and newlines.
+ * - Recursively prunes/truncates extremely long text values in the JSON (e.g. >250 chars) to prevent token blowup.
+ * - If the JSON structure is extremely large, prunes deep arrays or nested structures.
+ */
+export function compressJson(data: unknown): string {
+  if (data === undefined || data === null) return "";
+
+  // Parse if it is a string representing JSON
+  let obj: unknown = data;
+  if (typeof data === "string") {
+    const trimmed = data.trim();
+    if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+      try {
+        obj = JSON.parse(trimmed);
+      } catch {
+        // Not valid JSON, return as is
+        return trimmed;
+      }
+    } else {
+      return trimmed;
+    }
+  }
+
+  // Recursively prune/truncate long values and deep nesting to save tokens
+  function prune(val: unknown, depth = 0): unknown {
+    if (depth > 5) return "... [max depth reached]";
+    if (typeof val === "string") {
+      // Truncate excessively long strings (like base64, HTML dumps, long descriptions) in JSON values
+      if (val.length > 250) {
+        return val.slice(0, 250) + `... [truncated ${val.length - 250} chars]`;
+      }
+      return val;
+    }
+    if (Array.isArray(val)) {
+      // Limit arrays to 15 items maximum to avoid token bloat
+      if (val.length > 15) {
+        const sliced = val.slice(0, 15).map((item) => prune(item, depth + 1));
+        sliced.push(`... [truncated ${val.length - 15} items]`);
+        return sliced;
+      }
+      return val.map((item) => prune(item, depth + 1));
+    }
+    if (val !== null && typeof val === "object") {
+      const prunedObj: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(val)) {
+        prunedObj[k] = prune(v, depth + 1);
+      }
+      return prunedObj;
+    }
+    return val;
+  }
+
+  try {
+    const prunedObj = prune(obj);
+    return JSON.stringify(prunedObj); // Stringify without spaces or newlines (fully compressed)
+  } catch {
+    return typeof obj === "object" ? JSON.stringify(obj) : String(obj);
+  }
+}
+

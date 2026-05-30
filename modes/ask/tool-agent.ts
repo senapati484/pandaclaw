@@ -8,6 +8,7 @@ import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
+import { compressJson } from "../../ai/context-compressor.js";
 import {
   saveToMemory,
   loadMemory,
@@ -488,7 +489,7 @@ export async function runToolAgent(
           // Run standard tools (file_read, file_write, list_dir, code_exec, web_search)
           const result = await runTool(toolName, toolArgs, ctx);
           toolResult = result.success
-            ? { output: JSON.stringify(result.data) }
+            ? { output: compressJson(result.data) }
             : { error: result.error };
         }
 
@@ -497,7 +498,7 @@ export async function runToolAgent(
           tool_call_id: tc.id,
           content: toolResult.error
             ? `ERROR: ${toolResult.error}`
-            : toolResult.output ?? JSON.stringify(toolResult),
+            : compressJson(toolResult.output ?? toolResult),
         });
       }
 

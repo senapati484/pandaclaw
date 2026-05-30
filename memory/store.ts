@@ -100,7 +100,7 @@ export function saveGraphRelation(relation: Omit<GraphRelation, "timestamp">): v
     timestamp: Date.now(),
   });
 
-  writeFileSync(GRAPH_PATH, JSON.stringify({ relations }, null, 2), "utf8");
+  writeFileSync(GRAPH_PATH, JSON.stringify({ relations }), "utf8");
   syncGraphToMarkdown(relations);
 }
 

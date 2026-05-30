@@ -50,7 +50,7 @@ function savePairedUser(userId: number): void {
 
   if (!existing.includes(userId)) {
     existing.push(userId);
-    fs.writeFileSync(filePath, JSON.stringify({ users: existing }, null, 2), "utf8");
+    fs.writeFileSync(filePath, JSON.stringify({ users: existing }), "utf8");
   }
 }
 
