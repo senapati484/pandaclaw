@@ -6,6 +6,7 @@ import { webSearchTool } from "./web-search.js";
 import { webFetchTool } from "./web-fetch.js";
 import { codeExecTool } from "./code-exec.js";
 import { fileReadTool, fileWriteTool, listDirTool } from "./file-tools.js";
+import { appControlTool } from "./apps/index.js";
 
 export const TOOLS: Record<string, ToolDefinition> = {
   web_search: webSearchTool,
@@ -14,6 +15,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
   file_read:  fileReadTool,
   file_write: fileWriteTool,
   list_dir:   listDirTool,
+  app_control: appControlTool,
 };
 
 export interface ToolRunResult {

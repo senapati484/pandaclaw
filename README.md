@@ -71,6 +71,12 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
     - `complex` → deep reasoning path using DeepSeek R1 compiler (`runPandaMode`).
     - `action`  → agentic tool-use loops (`runToolAgent`) with full filesystem/shell access.
 
+### 🕹️ 8. Cross-Platform Full-Device Automation
+*   **Dynamic OS Detection**: Automatically adapts parameters and runs native command streams across macOS (`darwin`), Windows (`win32`), and Linux (`linux`).
+*   **System & Service Controls**: Launch directories directly in Visual Studio Code, manage background service processes (such as starting/stopping **Ollama** services), adjust audio output **volume** or display **brightness** level sliders, and manage system clipboard operations.
+*   **Advanced Web Orchestration**: List all open tabs (Title + URL) across windows, switch or focus tabs dynamically by title matching or index, trigger browser navigations (back, forward, refresh, close), and scroll windows (up, down, top, bottom) in Chrome, Safari (macOS), Microsoft Edge (Windows fallback), or Firefox (Linux fallback).
+*   **Simulated Keystrokes & Hotkeys**: Simulates typed strings and hotkey keyboard presses (e.g. `cmd+space` to launch Spotlight) natively using macOS System Events, Windows .NET Forms SendKeys interfaces, and Linux `xdotool` key managers.
+
 ---
 
 ## 📦 Project Directory Layout
@@ -100,8 +106,8 @@ pandaclaw/
 │   └── gateway/                # Unified Channel Gateway & Pluggable Adapters
 ├── canvas/                     # Local Canvas Web Dashboard Server
 ├── vision/                     # 4-stage Vision Pipeline (Perceive → Locate → Reason → Act)
-├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec, macOS Alarms)
-└── tests/                      # Suite of 31 Unit Tests (Swarm, Sandbox, Transactions, PandaGraph)
+├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec, macOS Alarms, Cross-Platform App Controls)
+└── tests/                      # Suite of 36 Unit Tests (Swarm, Sandbox, Transactions, PandaGraph, App-Control)
 ```
 
 ---

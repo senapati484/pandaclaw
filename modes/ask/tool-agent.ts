@@ -139,6 +139,53 @@ const TOOL_SCHEMAS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "app_control",
+      description: "Control native applications, settings, background services, browsers, and simulated user inputs on the user's macOS device.",
+      parameters: {
+        type: "object",
+        properties: {
+          app: {
+            type: "string",
+            enum: ["chrome", "safari", "youtube", "system", "browser_action", "keyboard"],
+            description: "The application or capability context to trigger."
+          },
+          action: {
+            type: "string",
+            enum: [
+              "open_url", "search", "resolve_latest", 
+              "vscode", "service", "volume", "brightness", "clipboard",
+              "scroll", "navigate", "list_tabs", "switch_tab",
+              "type", "press_key"
+            ],
+            description: "The action to perform."
+          },
+          url: { type: "string", description: "URL to open (required for Chrome/Safari open_url)." },
+          query: { type: "string", description: "Search query (required for Chrome search)." },
+          channel: { type: "string", description: "YouTube channel name to get the latest video for (required for YouTube resolve_latest)." },
+          folder: { type: "string", description: "Folder path (required for system vscode action)." },
+          service: { type: "string", description: "Service name, e.g. 'ollama' (required for system service action)." },
+          state: { type: "string", enum: ["start", "stop"], description: "Service state (required for system service action)." },
+          value: { type: "number", description: "Settings value, percentage 0 to 100 (required for system volume and brightness actions)." },
+          subAction: { type: "string", enum: ["read", "write"], description: "Clipboard action (required for system clipboard action)." },
+          text: { type: "string", description: "Keystroke string or clipboard text (required for keyboard type and clipboard write actions)." },
+          browser: { type: "string", enum: ["chrome", "safari"], description: "Target browser (optional, defaults to 'chrome' for browser_actions)." },
+          direction: { type: "string", enum: ["up", "down", "top", "bottom"], description: "Scroll direction (required for browser_action scroll)." },
+          navigateAction: { type: "string", enum: ["back", "forward", "refresh", "close_tab"], description: "Navigation action (required for browser_action navigate)." },
+          target: { type: "string", description: "Switch tab index or title match segment (required for browser_action switch_tab)." },
+          key: { type: "string", description: "Simulated key name, e.g. 'return', 'tab', 'escape', 'space', 'up', 'down', 'c', 'v' (required for keyboard press_key)." },
+          modifiers: {
+            type: "array",
+            items: { type: "string", enum: ["command", "option", "control", "shift", "cmd", "alt", "ctrl"] },
+            description: "Simulated modifier keys (optional for keyboard press_key)."
+          }
+        },
+        required: ["app", "action"]
+      }
+    }
+  }
 ];
 
 /** Build the system prompt dynamically from the current device's OS info — no hardcoding. */
@@ -186,6 +233,7 @@ Your tools:
   web_search   → search the internet
   alarm_set    → set alarms and reminders (macOS native notification or terminal bell)
   memory_recall→ recall past conversations
+  app_control  → control native applications, services (VS Code, Ollama), settings (volume, brightness), clipboards, browsers, and simulated keyboard inputs on this macOS device
 
 CRITICAL RULES — follow these EXACTLY:
 1. ALWAYS use tools for file/folder/code tasks. NEVER just describe — always DO it.
@@ -196,6 +244,13 @@ CRITICAL RULES — follow these EXACTLY:
 6. After every tool action, confirm what you did in 1-2 sentences.
 7. NEVER override git user.name/email — no -c user.name flags unless asked.
 8. Do NOT just show code to the user — actually create/run it using tools.
+9. To open a YouTube channel's latest video, ALWAYS use app_control with app='youtube', action='resolve_latest' first, then open the resolved URL with app='chrome' (or safari).
+10. To control macOS system services or accessories:
+    - Load a folder in VS Code: Use app='system', action='vscode', folder='/absolute/path/to/folder'.
+    - Manage services: Use app='system', action='service', service='ollama', state='start' (or 'stop').
+    - Control system volume/brightness: Use app='system', action='volume' (or 'brightness'), value=NUMBER.
+    - Focus/Switch tab: Use app='browser_action', action='switch_tab', target='Tab Name or Index' (in browser 'chrome' or 'safari').
+    - Simulate keys or keystrokes: Use app='keyboard', action='type' (or 'press_key') with text/key/modifiers parameters.
 
 ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
 }
