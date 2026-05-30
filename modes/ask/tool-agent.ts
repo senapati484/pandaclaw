@@ -136,7 +136,9 @@ RULES:
 - ALWAYS use tools for file/folder tasks. Never just describe how to do it.
 - For "append" requests: file_read first, then file_write the combined content.
 - Always use ABSOLUTE paths (starting with ${platform === "win32" ? "C:\\" : "/"}).
-- After every tool action confirm what you did in 1-2 sentences.`;
+- After every tool action confirm what you did in 1-2 sentences.
+- NEVER override git identity. When running git commit or git push, use plain git commands WITHOUT -c user.name or -c user.email flags. The user's own git config handles identity.
+- Only use "pandaclawbot" as an identity if the user EXPLICITLY asks you to commit as PandaClaw.`;
 }
 
 // ── Provider chain for tool calling ──────────────────────────────────────

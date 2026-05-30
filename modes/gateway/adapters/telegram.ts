@@ -6,6 +6,56 @@ import path from "path";
 import os from "os";
 import chalk from "chalk";
 
+// ── Paired users storage ──────────────────────────────────────────────────
+// Paired user IDs are stored in .pandaclaw/paired-users.json which is gitignored.
+// This means each device running PandaClaw has its own local authorized users list.
+// The shared bot token lives in config.json, but authorization is per-device.
+
+function getPairedUsersPath(): string {
+  const localPath = path.join(process.cwd(), ".pandaclaw", "paired-users.json");
+  if (fs.existsSync(path.dirname(localPath))) return localPath;
+  // Fallback: global ~/.pandaclaw/paired-users.json
+  return path.join(os.homedir(), ".pandaclaw", "paired-users.json");
+}
+
+function loadPairedUsers(): number[] {
+  const filePath = getPairedUsersPath();
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    return Array.isArray(data.users) ? data.users : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePairedUser(userId: number): void {
+  const filePath = getPairedUsersPath();
+  const dir = path.dirname(filePath);
+
+  // Ensure the .pandaclaw directory exists
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  let existing: number[] = [];
+  if (fs.existsSync(filePath)) {
+    try {
+      const raw = fs.readFileSync(filePath, "utf8");
+      const data = JSON.parse(raw);
+      existing = Array.isArray(data.users) ? data.users : [];
+    } catch {}
+  }
+
+  if (!existing.includes(userId)) {
+    existing.push(userId);
+    fs.writeFileSync(filePath, JSON.stringify({ users: existing }, null, 2), "utf8");
+  }
+}
+
+// ── Adapter ───────────────────────────────────────────────────────────────
+
 export class TelegramAdapter implements ChannelAdapter {
   public name = "telegram";
   private bot: TelegramBot | null = null;
@@ -16,7 +66,12 @@ export class TelegramAdapter implements ChannelAdapter {
 
   constructor(config: PandaConfig) {
     this.config = config;
-    this.allowedUsers = config.telegram?.allowed_users ?? [];
+
+    // Merge: config.json allowed_users + locally paired users from .pandaclaw/paired-users.json
+    const fromConfig = config.telegram?.allowed_users ?? [];
+    const fromStorage = loadPairedUsers();
+    // Deduplicate
+    this.allowedUsers = [...new Set([...fromConfig, ...fromStorage])];
   }
 
   public async initialize(): Promise<void> {
@@ -27,7 +82,7 @@ export class TelegramAdapter implements ChannelAdapter {
 
     this.bot = new TelegramBot(token, { polling: true });
 
-    // Generate pairing code if allowedUsers is empty
+    // Generate pairing code if no users are authorized yet on this device
     if (this.allowedUsers.length === 0) {
       const codePart1 = Math.floor(100 + Math.random() * 900);
       const codePart2 = Math.floor(100 + Math.random() * 900);
@@ -39,12 +94,18 @@ export class TelegramAdapter implements ChannelAdapter {
       console.log(chalk.hex("#5b4d9e")("├──────────────────────────────────────────────────────────┤"));
       console.log(chalk.hex("#5b4d9e")("│ ") + chalk.yellow("🔑 Pairing Code: ") + chalk.bold.underline.hex("#e8dcf8")(this.pairingCode) + " ".repeat(24) + chalk.hex("#5b4d9e")(" │"));
       console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("To securely pair your Telegram account with this device:") + "  " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("1. Open your custom Telegram Bot chat.") + "                 " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("2. Send this command: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                   " + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("To authorize your Telegram account on this device:") + "      " + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("1. Open the bot chat in Telegram.") + "                       " + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("2. Send: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                              " + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Each person runs their own PandaClaw + pairs their own") + "  " + chalk.hex("#5b4d9e")(" │"));
+      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Telegram account. One bot, many devices. ✅") + "             " + chalk.hex("#5b4d9e")(" │"));
       console.log(chalk.hex("#5b4d9e")("╰──────────────────────────────────────────────────────────╯\n"));
+    } else {
+      console.log(chalk.hex("#5b4d9e")(`\n  🐼 Telegram bot ready — ${this.allowedUsers.length} device(s) authorized.\n`));
     }
 
+    // ── Photo handler ───────────────────────────────────────────────────────
     this.bot.on("photo", async (msg) => {
       if (!this.bot || !this.messageCallback) return;
       if (!msg.from || !this.isAllowed(msg.from.id)) {
@@ -79,7 +140,7 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     });
 
-    // Helper to handle voice and audio messages
+    // ── Audio/voice handler ─────────────────────────────────────────────────
     const handleAudio = async (
       msg: any,
       fileId: string,
@@ -115,7 +176,6 @@ export class TelegramAdapter implements ChannelAdapter {
           return;
         }
 
-        // Notify user of successful transcription
         await this.bot.sendMessage(msg.chat.id, `🎙 *Transcribed:* _"${text}"_`, { parse_mode: "Markdown" });
 
         const channelMsg: ChannelMessage = {
@@ -142,42 +202,45 @@ export class TelegramAdapter implements ChannelAdapter {
       await handleAudio(msg, msg.audio.file_id, msg.audio.mime_type || "audio/mpeg", "audio.mp3");
     });
 
+    // ── Text handler ────────────────────────────────────────────────────────
     this.bot.on("message", async (msg) => {
       if (!this.bot || msg.photo || msg.voice || msg.audio) return;
       if (!msg.from) return;
 
       const text = msg.text?.trim() || "";
 
-      // Handle pairing command
+      // /pair command — pair this Telegram account with this device
       if (text.startsWith("/pair")) {
         const parts = text.split(/\s+/);
         const codeInput = parts[1];
 
         if (!this.pairingCode) {
-          await this.bot.sendMessage(msg.chat.id, "🐼 This device is already paired and secure!");
+          await this.bot.sendMessage(msg.chat.id, "🐼 This device already has authorized users. No pairing needed!");
           return;
         }
 
         if (codeInput === this.pairingCode) {
           this.allowedUsers.push(msg.from.id);
-          this.saveAllowedUser(msg.from.id);
-          this.pairingCode = null; // Pair complete, clear code
+          savePairedUser(msg.from.id);  // Save to .pandaclaw/paired-users.json (gitignored)
+          this.pairingCode = null; // Clear code after successful pairing
 
-          console.log(chalk.green(`\n✓ Paired successfully with Telegram user @${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}) 🐼\n`));
+          console.log(chalk.green(`\n✓ Paired! Telegram @${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}) authorized on this device. 🐼\n`));
           await this.bot.sendMessage(
             msg.chat.id,
-            `🎉 *Device paired successfully!*\n\nWelcome @${msg.from.username || msg.from.first_name}, you are now authorized to command PandaClaw.`,
+            `🎉 *Device paired successfully!*\n\nWelcome @${msg.from.username || msg.from.first_name}!\nYou are now authorized to command PandaClaw on this machine.\n\n_Your authorization is saved locally on this device._`,
             { parse_mode: "Markdown" }
           );
         } else {
           await this.bot.sendMessage(
             msg.chat.id,
-            "❌ *Invalid pairing code.*\n\nPlease double check the pairing code shown in your local terminal."
+            "❌ *Invalid pairing code.*\n\nPlease double-check the code shown in your local terminal.",
+            { parse_mode: "Markdown" }
           );
         }
         return;
       }
 
+      // Not authorized yet
       if (!this.isAllowed(msg.from.id)) {
         await this.sendPairingRequest(msg.chat.id);
         return;
@@ -221,37 +284,14 @@ export class TelegramAdapter implements ChannelAdapter {
 
   private async sendPairingRequest(chatId: number): Promise<void> {
     if (!this.bot) return;
+    const codeHint = this.pairingCode
+      ? `\n\nSend \`/pair <code>\` with the code shown in your terminal.`
+      : `\n\nThis device already has authorized users. You need access to the machine running PandaClaw.`;
+
     await this.bot.sendMessage(
       chatId,
-      "🐼 *Sorry, your device is not yet paired with this PandaClaw instance.*\n\n" +
-        "Please look at your terminal console and send the pair command:\n" +
-        "`/pair <pairing-code>`",
+      "🐼 *Your Telegram account is not yet paired with this device.*" + codeHint,
       { parse_mode: "Markdown" }
     );
-  }
-
-  private saveAllowedUser(userId: number): void {
-    let configPath = path.join(process.cwd(), "config.json");
-    if (!fs.existsSync(configPath)) {
-      const globalPath = path.join(os.homedir(), ".pandaclaw", "config.json");
-      if (fs.existsSync(globalPath)) {
-        configPath = globalPath;
-      }
-    }
-
-    if (fs.existsSync(configPath)) {
-      try {
-        const fileContent = fs.readFileSync(configPath, "utf8");
-        const data = JSON.parse(fileContent);
-        data.telegram = data.telegram || {};
-        data.telegram.allowed_users = data.telegram.allowed_users || [];
-        if (!data.telegram.allowed_users.includes(userId)) {
-          data.telegram.allowed_users.push(userId);
-          fs.writeFileSync(configPath, JSON.stringify(data, null, 2), "utf8");
-        }
-      } catch (err: any) {
-        console.error(chalk.red(`Error writing paired user to config.json: ${err.message}`));
-      }
-    }
   }
 }

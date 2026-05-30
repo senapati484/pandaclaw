@@ -37,3 +37,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # NEVER commit the GitHub App private key
 .pandaclaw/*.pem
 *.pem
+
+# PandaClaw — device-local state (never commit these)
+# Paired Telegram user IDs are stored per-device in paired-users.json
+.pandaclaw/paired-users.json
+.pandaclaw/memory.jsonl
+.pandaclaw/audit.jsonl
