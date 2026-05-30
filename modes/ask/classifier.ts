@@ -8,23 +8,32 @@ import type { AskTaskType } from "../../modes/agent/types.js";
 
 // Patterns that require TOOL execution (file access, code exec, alarms, system tasks)
 const ACTION_PATTERNS = [
-  // File operations
-  /\b(write|save|create|make|generate|put|store|export)\b.*\b(file|code|script|program|text|note|doc)\b/i,
-  /\b(read|open|show me|display|print|get|fetch)\b.*\b(file|folder|directory|desktop|document)\b/i,
-  // Path references → they mean a real file operation
-  /\b(desktop|downloads|documents|home|folder|directory)\b/i,
-  // Code execution
-  /\b(run|execute|launch|start|install|pip|npm|bun|python|node)\b/i,
+  // File operations (Create/Write/Save)
+  /\b(write|save|create|make|generate|put|store|export)\b.*\b(file|code|script|program|text|note|doc|readme|manifest|package|json|yaml|xml)\b/i,
+  // File operations (Read/View)
+  /\b(read|open|show me|display|print|get|fetch|cat|less|more|view)\b.*\b(file|folder|directory|desktop|document|src|test|config|package|tsconfig|env|log)\b/i,
+  // File operations (Delete/Remove/Clean)
+  /\b(delete|remove|erase|rm|del|discard|clear|cleanup|purge|unlink)\b.*\b(file|folder|directory|desktop|document|src|test|config|env|log|cache|temp)\b/i,
+  // Path references → they mean a real file/folder operation
+  /\b(desktop|downloads|documents|home|folder|directory|workspace|codebase|repo|repository)\b/i,
+  // Code execution & terminal CLI tools
+  /\b(run|execute|launch|start|install|pip|npm|bun|python|node|bash|sh|cmd|powershell|cli)\b/i,
   // System / alarm
   /\b(alarm|reminder|alert|remind|notify|notification|schedule|timer)\b/i,
   // Git operations
-  /\b(push|commit|pull|clone|git)\b/i,
+  /\b(push|commit|pull|clone|git|repo|github|pr|merge|checkout|status|branch)\b/i,
   // List / browse filesystem
-  /\b(list|ls|dir)\b.*\b(file|folder|directory|desktop)\b/i,
+  /\b(list|ls|dir|browse|tree|find|locate|where is)\b.*\b(file|folder|directory|desktop|workspace|codebase|repo)\b/i,
   // Search web
-  /\b(search|look up|find on|google|browse)\b/i,
+  /\b(search|look up|find on|google|browse|web|internet|duckduckgo|tavily|wikipedia)\b/i,
   // Memory
-  /\b(remember|recall|memory|what did i|do you know|last time)\b/i,
+  /\b(remember|recall|memory|what did i|do you know|last time|facts|preference)\b/i,
+  // System settings, clipboard, and browser control V2/V3
+  /\b(volume|audio|sound|mute|unmute|brightness|light|screen|monitor|display|clipboard|copy|paste)\b/i,
+  // Browser apps and actions (websites, tabs, urls)
+  /\b(open|launch|close|focus|scroll|navigate|refresh|reload|tab|tabs|browser|chrome|safari|firefox|edge|msedge|opera|youtube|url|link|website|site|google|github)\b/i,
+  // Keyboard/Input controls
+  /\b(type|press|keystroke|shortcut|hotkey|keys|key)\b/i,
 ];
 
 export type RouteType = "action" | "complex" | "simple";

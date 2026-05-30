@@ -27,7 +27,7 @@ async function tryProvider(
   if (!apiKey) return null;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout for fast path
+  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout for fast path
 
   try {
     const res = await fetch(`${apiBase}/chat/completions`, {

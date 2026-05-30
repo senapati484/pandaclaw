@@ -240,19 +240,20 @@ export async function handleClipboard(action: "read" | "write", text?: string): 
     if (text === undefined) {
       throw new Error("Missing 'text' parameter for clipboard write action.");
     }
-    const cleanText = text.replace(/"/g, '\\"');
-
     if (platform === "darwin") {
+      const cleanText = text.replace(/"/g, '\\"');
       await execAppleScript(`set the clipboard to "${cleanText}"`);
       return `✅ Text successfully copied to system clipboard: "${text.slice(0, 50)}..."`;
     }
 
     if (platform === "win32") {
+      const cleanText = text.replace(/`/g, "``").replace(/"/g, '`"');
       await execPowerShell(`Set-Clipboard -Value "${cleanText}"`);
       return `✅ Text successfully copied to system clipboard: "${text.slice(0, 50)}..."`;
     }
 
     // Linux clipboard write
+    const cleanText = text.replace(/"/g, '\\"');
     try {
       await execShell(`echo -n "${cleanText}" | xclip -selection clipboard`);
     } catch {

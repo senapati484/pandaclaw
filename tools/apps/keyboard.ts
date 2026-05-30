@@ -28,7 +28,9 @@ export async function simulateKeystroke(text: string): Promise<string> {
   }
 
   if (platform === "win32") {
-    const escaped = escapeSendKeys(text);
+    const escaped = escapeSendKeys(text)
+      .replace(/`/g, "``")
+      .replace(/"/g, '""');
     const cmd = `
       $ws = New-Object -ComObject WScript.Shell;
       $ws.SendKeys("${escaped}");
