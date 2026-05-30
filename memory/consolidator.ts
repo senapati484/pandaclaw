@@ -1,6 +1,6 @@
 import { writeFileSync, existsSync, readFileSync } from "fs";
 import path from "path";
-import { loadMemory } from "./store.js";
+import { loadMemory, saveGraphRelation } from "./store.js";
 import type { PandaConfig } from "../ai/ai.config.js";
 import { callLLM } from "../ai/llm.js";
 
@@ -24,17 +24,20 @@ export class MemoryConsolidator {
       .map((e, idx) => `[${idx + 1}] Role: ${e.role}, Content: "${e.content}" (Importance: ${e.importance})`)
       .join("\n");
 
-    const prompt = `You are a memory consolidator agent for PandaClaw.
-Analyze these raw conversation entries and build a consolidated Knowledge Graph of:
-1. User preferences (custom configurations, layout settings).
-2. Known entities (frameworks, tech stacks, file names).
-3. Learned constraints (unsupported APIs, path guards, bugs to avoid).
-4. Success patterns (how specific problems were solved).
+    const prompt = `You are a semantic memory consolidator agent for PandaClaw.
+Analyze these raw conversation entries and extract core facts, user preferences, configurations, settings, success patterns, and constraints as a set of semantic triplets: Subject | Predicate | Object.
+
+Examples:
+- User | prefers styling | deep purple theme
+- Workspace | uses framework | React with Bun
+- PandaClaw | must avoid | overriding git user.name
+- alarm_set tool | uses utility | macOS osascript
 
 Raw Entries:
 ${logSummary}
 
-Format the output strictly as a clean Markdown document with ## headers for each category. Keep it concise.`;
+Format the output strictly as a list of triplets, one per line, with no extra conversational text or markdown code blocks, formatted exactly as:
+Subject | Predicate | Object`;
 
     try {
       const data = await callLLM(config, {
@@ -45,10 +48,22 @@ Format the output strictly as a clean Markdown document with ## headers for each
 
       const graph = data.choices?.[0]?.message?.content ?? "";
 
-      const graphPath = path.join(this.workspacePath, ".pandaclaw", "KNOWLEDGE_GRAPH.md");
-      writeFileSync(graphPath, graph, "utf8");
+      const lines = graph.split("\n").filter((l: string) => l.trim());
+      let extractedCount = 0;
+      for (const line of lines) {
+        // Strip out leading bullets or numbers if generated
+        const cleanLine = line.replace(/^[\s•\-\d\.\*]+/, "").trim();
+        const parts = cleanLine.split("|").map((p: string) => p.trim());
+        if (parts.length === 3) {
+          const [subject, predicate, object] = parts;
+          if (subject && predicate && object) {
+            saveGraphRelation({ subject, predicate, object });
+            extractedCount++;
+          }
+        }
+      }
 
-      return graph;
+      return `Consolidated ${extractedCount} semantic relations into PandaGraph.`;
     } catch (err: any) {
       return `Consolidation error: ${err.message}`;
     }
@@ -62,3 +77,4 @@ Format the output strictly as a clean Markdown document with ## headers for each
     return "";
   }
 }
+

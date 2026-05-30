@@ -43,3 +43,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .pandaclaw/paired-users.json
 .pandaclaw/memory.jsonl
 .pandaclaw/audit.jsonl
+.pandaclaw/graph_memory.json
+.pandaclaw/chats.jsonl

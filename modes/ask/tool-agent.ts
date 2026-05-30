@@ -8,7 +8,14 @@ import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
-import { saveToMemory, loadMemory, recallRelevant } from "../../memory/store.js";
+import {
+  saveToMemory,
+  loadMemory,
+  recallRelevant,
+  saveChatMessage,
+  loadChatHistory,
+  recallRelevantRelations
+} from "../../memory/store.js";
 
 export interface ToolAgentResult {
   answer: string;
@@ -16,21 +23,15 @@ export interface ToolAgentResult {
   durationMs: number;
 }
 
-// ── In-process per-chat conversation history ──────────────────────────────
-// Maps chatId → last N messages so the bot has context across messages
-const chatHistories = new Map<string, Array<{ role: string; content: string }>>();
-const MAX_HISTORY = 10; // Keep last 10 turns per chat
+// ── Persistent per-chat conversation history ──────────────────────────────
+const MAX_HISTORY = 10; // Keep last 10 turns per chat in prompt context
 
-function getChatHistory(chatId: string): Array<{ role: string; content: string }> {
-  return chatHistories.get(chatId) ?? [];
+function getChatHistory(chatId: string): Array<{ role: "user" | "assistant"; content: string }> {
+  return loadChatHistory(chatId, MAX_HISTORY);
 }
 
-function pushChatHistory(chatId: string, role: string, content: string): void {
-  const hist = chatHistories.get(chatId) ?? [];
-  hist.push({ role, content });
-  // Trim to keep only recent history
-  while (hist.length > MAX_HISTORY * 2) hist.shift();
-  chatHistories.set(chatId, hist);
+function pushChatHistory(chatId: string, role: "user" | "assistant", content: string): void {
+  saveChatMessage(chatId, role, content);
 }
 
 // ── OpenAI-compatible tool schema for the LLM ─────────────────────────────
@@ -386,16 +387,27 @@ async function handleAlarmSet(args: Record<string, unknown>): Promise<{ success:
 async function handleMemoryRecall(args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
   const query = String(args.query ?? "");
   try {
+    const graphFacts = recallRelevantRelations(query, 5);
     const memory = loadMemory();
     const all = [...memory.recentEntries, ...memory.longTermFacts];
     const relevant = recallRelevant(query, all, 5);
-    if (relevant.length === 0) {
+
+    let output = "";
+    if (graphFacts.length > 0) {
+      output += "🐼 Knowledge Graph Facts:\n" + graphFacts.join("\n") + "\n\n";
+    }
+
+    if (relevant.length > 0) {
+      output += "📝 Historical Logs:\n" + relevant
+        .map((e) => `[${new Date(e.timestamp).toLocaleString()}] ${e.role}: ${e.content.slice(0, 200)}`)
+        .join("\n---\n");
+    }
+
+    if (!output) {
       return { success: true, output: "No relevant memories found." };
     }
-    const formatted = relevant
-      .map((e) => `[${new Date(e.timestamp).toLocaleString()}] ${e.role}: ${e.content.slice(0, 200)}`)
-      .join("\n---\n");
-    return { success: true, output: formatted };
+
+    return { success: true, output };
   } catch {
     return { success: false, output: "Failed to recall memory." };
   }
@@ -414,13 +426,17 @@ export async function runToolAgent(
   // Load relevant memory for context
   let memoryContext = "";
   try {
+    const graphFacts = recallRelevantRelations(userMessage, 4);
     const memory = loadMemory();
     const all = [...memory.recentEntries, ...memory.longTermFacts];
     const relevant = recallRelevant(userMessage, all, 3);
+
+    const list = [...graphFacts];
     if (relevant.length > 0) {
-      memoryContext = relevant
-        .map((e) => `• ${e.role}: ${e.content.slice(0, 150)}`)
-        .join("\n");
+      list.push(...relevant.map((e) => `• ${e.role}: ${e.content.slice(0, 150)}`));
+    }
+    if (list.length > 0) {
+      memoryContext = list.join("\n");
     }
   } catch {}
 

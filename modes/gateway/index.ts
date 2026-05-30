@@ -1,5 +1,5 @@
 import { readConfig } from "../../ai/ai.config.js";
-import { saveToMemory } from "../../memory/store.js";
+import { saveToMemory, saveChatMessage } from "../../memory/store.js";
 import { runVisionPipeline } from "../../vision/index.js";
 import type { ChannelAdapter, ChannelMessage } from "./adapter.js";
 import { TelegramAdapter } from "./adapters/telegram.js";
@@ -13,6 +13,7 @@ import chalk from "chalk";
 export class Gateway {
   private config = readConfig();
   private adapters: Map<string, ChannelAdapter> = new Map();
+  private messageCounter = 0;
 
   constructor() {
     try {
@@ -171,6 +172,12 @@ export class Gateway {
             toolsUsed: [] as string[],
             durationMs: fastResult.durationMs,
           };
+
+          // Save simple turns to persistent chat history
+          try {
+            saveChatMessage(chatId, "user", userText);
+            saveChatMessage(chatId, "assistant", result.answer);
+          } catch {}
         }
 
         const toolBadge =
@@ -179,6 +186,16 @@ export class Gateway {
             : `\n\n_⚡ ${result.durationMs}ms_`;
 
         await adapter.sendMessage(chatId, result.answer + toolBadge);
+
+        // Increment message counter and trigger background semantic memory consolidation every 3 turns
+        this.messageCounter++;
+        if (this.messageCounter % 3 === 0) {
+          const { MemoryConsolidator } = await import("../../memory/consolidator.js");
+          const consolidator = new MemoryConsolidator(process.cwd());
+          consolidator.consolidate(this.config)
+            .then((summary) => console.log(chalk.gray(`  🐼 [Memory Background Consolidator] ${summary}`)))
+            .catch((err) => console.error(chalk.red(`  🐼 [Memory Background Consolidator Error] ${err.message}`)));
+        }
 
         // Persist to memory
         try {
