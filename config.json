@@ -88,8 +88,7 @@
     "enabled": true
   },
   "telegram": {
-    "token": "",
-    "allowed_users": []
+    "token": ""
   },
   "agent": {
     "maxIterations": 20,

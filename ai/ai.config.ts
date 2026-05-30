@@ -25,7 +25,7 @@ export interface PandaConfig {
   };
   memory?: { path: string; maxEntries: number; maxLongTermFacts?: number };
   audit?:  { path: string; enabled: boolean };
-  telegram?: { token: string; allowed_users: number[] };
+  telegram?: { token: string; allowed_users?: number[] };
   slack?: { webhook_url: string };
   /** GitHub App credentials for pandaclawbot[bot] identity */
   github?: {
@@ -78,7 +78,7 @@ export function readConfig(): PandaConfig {
   // Telegram
   const tgToken = process.env.TELEGRAM_TOKEN;
   if (tgToken)
-    file.telegram = { ...(file.telegram ?? { token: "", allowed_users: [] }), token: tgToken };
+    file.telegram = { ...(file.telegram ?? { token: "" }), token: tgToken };
 
   // GitHub App — allow env var overrides for CI/CD environments
   const ghAppId          = process.env.GITHUB_APP_ID;

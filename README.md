@@ -168,8 +168,7 @@ You can also create or edit `config.json` manually:
     }
   },
   "telegram": {
-    "token": "YOUR_BOTFATHER_TOKEN",
-    "allowed_users": []
+    "token": "YOUR_BOTFATHER_TOKEN"
   }
 }
 ```

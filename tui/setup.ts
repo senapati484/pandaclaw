@@ -61,7 +61,7 @@ export async function runSetup(): Promise<void> {
   config.tools = config.tools || {};
   config.tools.web_search = config.tools.web_search || { provider: "tavily", api_key: "", fallback: "duckduckgo", maxResults: 5 };
 
-  config.telegram = config.telegram || { token: "", allowed_users: [] };
+  config.telegram = config.telegram || { token: "" };
   config.slack = config.slack || { webhook_url: "" };
 
   // 1. API Keys Section
