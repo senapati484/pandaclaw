@@ -1,9 +1,8 @@
-// tui/wakeup.ts
-
 import { select, isCancel } from "@clack/prompts";
 import chalk from "chalk";
 import figlet from "figlet";
 import { runCli } from "../modes/cli";
+import { acquireLock } from "../utils/process-lock.js";
 
 const BANNER_FONT = "ANSI Shadow";
 const SHADOW = chalk.hex('#5b4d9e');
@@ -51,8 +50,11 @@ export async function runWakeup () {
     }
 
     if (mode === "cli") {
+        await acquireLock();
         await runCli();
     } else if (mode === "telegram") {
+        // Kill any old instance and take the lock before starting Telegram
+        await acquireLock();
         const { Gateway } = await import("../modes/gateway/index.js");
         const gateway = new Gateway();
         await gateway.start();
