@@ -1,26 +1,38 @@
 import { expect, test, describe, beforeAll, afterAll } from "bun:test";
 import { GitTransaction } from "../fs/transaction";
-import { writeFileSync, existsSync, readFileSync, unlinkSync } from "fs";
+import { writeFileSync, existsSync, readFileSync, rmSync, mkdtempSync } from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import os from "os";
 
 describe("GitTransaction", () => {
-  const workspacePath = path.resolve(".");
+  let tempDir = "";
   let tx: GitTransaction;
-  const testFile = path.join(workspacePath, "tx_test_file.txt");
+  let testFile = "";
 
   beforeAll(() => {
-    tx = new GitTransaction(workspacePath);
-    if (existsSync(testFile)) {
-      unlinkSync(testFile);
-    }
+    // Create a temporary directory for the git repository
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "pandaclaw-git-test-"));
+    
+    // Initialize git repo in the temp directory
+    execSync("git init", { cwd: tempDir, stdio: "ignore" });
+    execSync("git config user.name 'Test User'", { cwd: tempDir, stdio: "ignore" });
+    execSync("git config user.email 'test@example.com'", { cwd: tempDir, stdio: "ignore" });
+    
+    // Create an initial commit so we have a 'main' branch
+    const readmePath = path.join(tempDir, "README.md");
+    writeFileSync(readmePath, "# Test Repo", "utf8");
+    execSync("git add README.md && git commit -m 'Initial commit'", { cwd: tempDir, stdio: "ignore" });
+
+    tx = new GitTransaction(tempDir);
+    testFile = path.join(tempDir, "tx_test_file.txt");
   });
 
   afterAll(() => {
-    if (existsSync(testFile)) {
-      unlinkSync(testFile);
+    // Clean up temporary directory recursively
+    if (tempDir && existsSync(tempDir)) {
       try {
-        execSync("git add tx_test_file.txt && git commit -m 'Test cleanup' || true", { stdio: "ignore" });
+        rmSync(tempDir, { recursive: true, force: true });
       } catch {}
     }
   });
