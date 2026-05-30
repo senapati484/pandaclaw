@@ -80,7 +80,48 @@ export class TelegramAdapter implements ChannelAdapter {
       throw new Error("Missing Telegram token");
     }
 
-    this.bot = new TelegramBot(token, { polling: true });
+    // dropPendingUpdates: true — skip messages queued while bot was offline.
+    // This prevents replaying stale messages after a restart/crash.
+    this.bot = new TelegramBot(token, {
+      polling: {
+        interval: 300,
+        autoStart: true,
+        params: { timeout: 10, allowed_updates: ["message"] },
+      },
+    });
+
+    // ── Drop pending updates on startup to avoid replaying stale messages ──
+    try {
+      await (this.bot as any).getUpdates({ offset: -1, limit: 1 });
+    } catch { /* best-effort */ }
+
+    // ── Handle polling errors gracefully (especially 409 Conflict) ──────────
+    this.bot.on("polling_error", (err: any) => {
+      const code: string = err?.code ?? "";
+      const msg: string = err?.message ?? String(err);
+
+      if (code === "ETELEGRAM" && msg.includes("409")) {
+        // Another instance is running — stop this one cleanly
+        console.warn(chalk.yellow(
+          "\n⚠️  Another PandaClaw instance is already running (Telegram 409).\n" +
+          "   Stop the other instance first, then restart.\n"
+        ));
+        this.bot?.stopPolling().catch(() => {});
+        return;
+      }
+
+      // Log other non-fatal polling errors without crashing
+      if (!msg.includes("EFATAL") && !msg.includes("terminated")) {
+        console.warn(chalk.gray(`  [telegram] polling warning: ${msg.slice(0, 120)}`));
+      }
+    });
+
+    // ── Clean shutdown on Ctrl+C / SIGTERM ──────────────────────────────────
+    const cleanup = () => {
+      this.bot?.stopPolling().catch(() => {});
+    };
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
 
     // Generate pairing code if no users are authorized yet on this device
     if (this.allowedUsers.length === 0) {
