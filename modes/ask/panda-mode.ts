@@ -29,8 +29,9 @@ export async function runPandaMode(
 
   // Panda mode fallback chain: DeepSeek R1 → Qwen3 → fast-path
   const pandaModels = [
-    model,                          // deepseek/deepseek-r1:free (primary)
-    "qwen/qwen3-235b-a22b:free",    // strong fallback with reasoning
+    model,                                           // deepseek/deepseek-r1:free (primary)
+    "meta-llama/llama-3.3-70b-instruct:free",        // Llama 3.3 70B — verified free on OpenRouter
+    "openai/gpt-oss-120b:free",                      // GPT-OSS 120B — strong fallback
   ];
 
   // ── STEP 1: REASON — try each model in turn ──

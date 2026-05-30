@@ -284,11 +284,35 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // Qwen 3 235B — strong free model with native tool calling on OpenRouter
-    name: "openrouter_qwen3",
+    // Llama 3.3 70B (free) — verified on OpenRouter, 131K ctx, great tool calling
+    name: "openrouter_llama",
     base: config.providers.openrouter.api_base,
     key:  config.providers.openrouter.api_key,
-    model: "qwen/qwen3-235b-a22b:free",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // GPT-OSS 120B (free) — OpenAI OSS model on OpenRouter, strong tool calling
+    name: "openrouter_gpt_oss",
+    base: config.providers.openrouter.api_base,
+    key:  config.providers.openrouter.api_key,
+    model: "openai/gpt-oss-120b:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // DeepSeek V4 Flash (free) — 1M context, fast
+    name: "openrouter_deepseek_flash",
+    base: config.providers.openrouter.api_base,
+    key:  config.providers.openrouter.api_key,
+    model: "deepseek/deepseek-v4-flash:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",

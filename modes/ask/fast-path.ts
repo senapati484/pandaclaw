@@ -133,12 +133,12 @@ export async function runFastPath(
         maxTokens,
         temperature
       ),
-    // ── OpenRouter Qwen3 — strong free model, if both Groq buckets are exhausted ──
+    // ── OpenRouter Llama 3.3 70B — verified free model with tool calling ──
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        "qwen/qwen3-235b-a22b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
         messages,
         maxTokens,
         temperature,
