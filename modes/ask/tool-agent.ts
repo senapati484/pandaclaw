@@ -242,7 +242,7 @@ CRITICAL RULES — follow these EXACTLY:
 4. When user asks about past conversations → use memory_recall first.
 5. ALWAYS use ABSOLUTE paths (starting with /).
 6. After every tool action, confirm what you did in 1-2 sentences.
-7. NEVER override git user.name/email — no -c user.name flags unless asked.
+7. NEVER add -c user.name or -c user.email flags to ANY git command in code_exec. Use plain git commands (e.g. "git push origin main") and let git use the user's own identity.
 8. Do NOT just show code to the user — actually create/run it using tools.
 9. To open a YouTube channel's latest video, ALWAYS use app_control with app='youtube', action='resolve_latest' first, then open the resolved URL with app='chrome' (or safari).
 10. To control macOS system services or accessories:
@@ -251,6 +251,11 @@ CRITICAL RULES — follow these EXACTLY:
     - Control system volume/brightness: Use app='system', action='volume' (or 'brightness'), value=NUMBER.
     - Focus/Switch tab: Use app='browser_action', action='switch_tab', target='Tab Name or Index' (in browser 'chrome' or 'safari').
     - Simulate keys or keystrokes: Use app='keyboard', action='type' (or 'press_key') with text/key/modifiers parameters.
+11. To DELETE a file: use code_exec with the correct OS command:
+    - macOS/Linux: "rm /absolute/path/to/file"
+    - Windows: "del C:\\path\\to\\file"
+    NEVER just tell the user how to delete manually — DO it with code_exec.
+12. To EDIT a file: use file_write with the COMPLETE updated content — do NOT truncate.
 
 ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
 }
@@ -274,7 +279,20 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    name: "openrouter",
+    // Qwen 3 235B — strong free model with native tool calling on OpenRouter
+    name: "openrouter_qwen3",
+    base: config.providers.openrouter.api_base,
+    key:  config.providers.openrouter.api_key,
+    model: "qwen/qwen3-235b-a22b:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // OpenRouter smart free router — auto-selects best available free model
+    name: "openrouter_free",
     base: config.providers.openrouter.api_base,
     key:  config.providers.openrouter.api_key,
     model: "openrouter/free",

@@ -27,7 +27,13 @@ export async function runPandaMode(
   const { model, maxTokens, temperature } = config.routing.panda_mode;
   const fastModel = config.routing.fast_path.model;
 
-  // ── STEP 1: REASON — DeepSeek R1 ──
+  // Panda mode fallback chain: DeepSeek R1 → Qwen3 → fast-path
+  const pandaModels = [
+    model,                          // deepseek/deepseek-r1:free (primary)
+    "qwen/qwen3-235b-a22b:free",    // strong fallback with reasoning
+  ];
+
+  // ── STEP 1: REASON — try each model in turn ──
   const reasonMessages = [
     {
       role: "system",
@@ -40,35 +46,46 @@ Put your reasoning in <think>...</think> tags, then give your final answer.`,
     { role: "user", content: task.input },
   ];
 
-  let rawResponse: string;
+  let rawResponse: string = "";
   let tokensUsed = 0;
+  let reasonSucceeded = false;
 
-  try {
-    const reasonRes = await fetch(`${config.providers.openrouter.api_base}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${orKey}`,
-        "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-        "X-Title": "PandaClaw",
-      },
-      body: JSON.stringify({
-        model,
-        messages: reasonMessages,
-        max_tokens: maxTokens,
-        temperature,
-      }),
-    });
+  for (const pandaModel of pandaModels) {
+    try {
+      const reasonRes = await fetch(`${config.providers.openrouter.api_base}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${orKey}`,
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        },
+        body: JSON.stringify({
+          model: pandaModel,
+          messages: reasonMessages,
+          max_tokens: maxTokens,
+          temperature,
+        }),
+      });
 
-    if (!reasonRes.ok) {
-      throw new Error(`OpenRouter ${reasonRes.status}`);
+      if (!reasonRes.ok) {
+        const errText = await reasonRes.text();
+        throw new Error(`OpenRouter ${reasonRes.status}: ${errText.slice(0, 200)}`);
+      }
+
+      const reasonData = (await reasonRes.json()) as LLMResponse;
+      rawResponse = reasonData.choices[0]?.message?.content ?? "";
+      tokensUsed = reasonData.usage?.total_tokens ?? 0;
+      reasonSucceeded = true;
+      break; // Success — stop trying fallbacks
+    } catch (err: any) {
+      console.warn(`[panda-mode] ${pandaModel} failed: ${err.message?.slice(0, 80)}`);
+      // Continue to next fallback
     }
+  }
 
-    const reasonData = (await reasonRes.json()) as LLMResponse;
-    rawResponse = reasonData.choices[0]?.message?.content ?? "";
-    tokensUsed = reasonData.usage?.total_tokens ?? 0;
-  } catch {
-    // Fallback to fast path if OpenRouter fails
+  if (!reasonSucceeded) {
+    // All OpenRouter models failed — use fast path
     const { runFastPath } = await import("./fast-path.js");
     const result = await runFastPath(task, config);
     return { ...result, durationMs: Date.now() - start };

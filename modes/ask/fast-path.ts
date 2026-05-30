@@ -133,7 +133,21 @@ export async function runFastPath(
         maxTokens,
         temperature
       ),
-    // ── OpenRouter — if both Groq buckets are exhausted ───────────────────
+    // ── OpenRouter Qwen3 — strong free model, if both Groq buckets are exhausted ──
+    () =>
+      tryProvider(
+        config.providers.openrouter.api_base,
+        config.providers.openrouter.api_key,
+        "qwen/qwen3-235b-a22b:free",
+        messages,
+        maxTokens,
+        temperature,
+        {
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        }
+      ),
+    // ── OpenRouter free router — auto-selects best available free model ────
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
