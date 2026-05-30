@@ -1,5 +1,5 @@
 // modes/ask/tool-agent.ts
-// Agentic LLM loop with real tool use (file_read, file_write, list_dir, code_exec, web_search)
+// Agentic LLM loop with real tool use (file_read, file_write, list_dir, code_exec, web_search, alarm_set, memory_recall)
 // All paths are resolved dynamically — no hardcoded usernames or device paths.
 
 import os from "os";
@@ -8,11 +8,29 @@ import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
+import { saveToMemory, loadMemory, recallRelevant } from "../../memory/store.js";
 
 export interface ToolAgentResult {
   answer: string;
   toolsUsed: string[];
   durationMs: number;
+}
+
+// ── In-process per-chat conversation history ──────────────────────────────
+// Maps chatId → last N messages so the bot has context across messages
+const chatHistories = new Map<string, Array<{ role: string; content: string }>>();
+const MAX_HISTORY = 10; // Keep last 10 turns per chat
+
+function getChatHistory(chatId: string): Array<{ role: string; content: string }> {
+  return chatHistories.get(chatId) ?? [];
+}
+
+function pushChatHistory(chatId: string, role: string, content: string): void {
+  const hist = chatHistories.get(chatId) ?? [];
+  hist.push({ role, content });
+  // Trim to keep only recent history
+  while (hist.length > MAX_HISTORY * 2) hist.shift();
+  chatHistories.set(chatId, hist);
 }
 
 // ── OpenAI-compatible tool schema for the LLM ─────────────────────────────
@@ -21,11 +39,11 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "file_read",
-      description: "Read the contents of ANY file anywhere on the device. Use absolute paths like /Users/sayansenapati/Desktop/file.txt or relative paths.",
+      description: "Read the contents of ANY file anywhere on the device. Use absolute paths.",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Absolute or relative path to the file anywhere on the device." },
+          path: { type: "string", description: "Absolute path to the file." },
         },
         required: ["path"],
       },
@@ -39,7 +57,7 @@ const TOOL_SCHEMAS = [
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Absolute or relative path to the file to write anywhere on the device." },
+          path: { type: "string", description: "Absolute path to the file to write." },
           content: { type: "string", description: "Full content to write to the file." },
         },
         required: ["path", "content"],
@@ -50,11 +68,11 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "list_dir",
-      description: "List files and folders at ANY directory on the device. Use absolute paths like /Users/sayansenapati/Desktop.",
+      description: "List files and folders at ANY directory on the device.",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Absolute path to the directory. E.g. /Users/sayansenapati/Desktop or /" },
+          path: { type: "string", description: "Absolute path to the directory." },
           recursive: { type: "boolean", description: "Whether to list recursively (default false)." },
         },
         required: [],
@@ -65,12 +83,12 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "code_exec",
-      description: "Execute any shell command on the device and return its output. Full system access — use bash commands like ls, cat, mkdir, echo, pwd, etc.",
+      description: "Execute any shell command on the device and return its output. Full system access — use bash commands like ls, cat, mkdir, echo, pwd, python3, bun, etc.",
       parameters: {
         type: "object",
         properties: {
-          code: { type: "string", description: "Shell command to run. E.g. 'echo hello > /Users/sayansenapati/Desktop/test.txt' or 'ls /Users/sayansenapati'" },
-          timeout: { type: "number", description: "Timeout in milliseconds (default 15000)." },
+          code: { type: "string", description: "Shell command to run." },
+          timeout: { type: "number", description: "Timeout in milliseconds (default 30000)." },
         },
         required: ["code"],
       },
@@ -90,17 +108,45 @@ const TOOL_SCHEMAS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "alarm_set",
+      description: "Set an alarm, reminder or notification at a specific time or after a delay. Works on macOS. Use this for 'set alarm for 5pm', 'remind me in 10 minutes', 'alert me at 3:30pm', etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "The alarm message or reminder text to display." },
+          time: { type: "string", description: "Time to trigger: either HH:MM (24h, e.g. '17:00') for a specific clock time, or a delay like '10m', '30s', '1h'." },
+        },
+        required: ["message", "time"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_recall",
+      description: "Recall past conversations and facts from memory. Use when the user says 'do you remember', 'what did I say', 'last time', etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to recall from memory." },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];
 
 /** Build the system prompt dynamically from the current device's OS info — no hardcoding. */
-function buildSystemPrompt(): string {
-  const home     = os.homedir();                        // e.g. /Users/sayansenapati  or  /home/ubuntu
-  const username = os.userInfo().username;              // e.g. sayansenapati
-  const platform = os.platform();                       // darwin | linux | win32
-  const hostname = os.hostname();                       // e.g. Sayans-MacBook-Air
-  const cwd      = process.cwd();                       // pandaclaw working dir
+function buildSystemPrompt(memoryContext: string): string {
+  const home     = os.homedir();
+  const username = os.userInfo().username;
+  const platform = os.platform();
+  const hostname = os.hostname();
+  const cwd      = process.cwd();
 
-  // Common locations that exist on this specific machine
   const desktop   = path.join(home, "Desktop");
   const downloads = path.join(home, "Downloads");
   const documents = path.join(home, "Documents");
@@ -110,6 +156,11 @@ function buildSystemPrompt(): string {
       ? `This is a Windows machine. Use Windows-style paths (e.g. C:\\Users\\${username}\\Desktop).`
       : `This is a ${platform === "darwin" ? "macOS" : "Linux"} machine.`;
 
+  // Current time for alarm awareness
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
   return `You are PandaClaw, a powerful AI agent running locally on ${hostname}.
 You have FULL, UNRESTRICTED access to the ENTIRE device — every file, folder, and command.
 
@@ -117,6 +168,7 @@ ${platformNote}
 Username : ${username}
 Home dir : ${home}
 CWD      : ${cwd}
+Now      : ${timeStr} on ${dateStr}
 
 Common locations on this device:
   Desktop   → ${desktop}
@@ -124,29 +176,31 @@ Common locations on this device:
   Documents → ${documents}
   Pandaclaw → ${cwd}
 
-Your tools work with ANY path on this device:
-  file_read  → read any file anywhere (use absolute paths)
-  file_write → create or edit any file anywhere (auto-creates parent dirs)
-  list_dir   → browse any folder — pass absolute path like ${home}
-  code_exec  → run any shell command with full system access
-  web_search → search the internet
+Your tools:
+  file_read    → read any file anywhere (use absolute paths)
+  file_write   → create or edit any file anywhere (auto-creates parent dirs)
+  list_dir     → browse any folder
+  code_exec    → run any shell command (python3, bun, git, etc.)
+  web_search   → search the internet
+  alarm_set    → set alarms and reminders (macOS native notification or terminal bell)
+  memory_recall→ recall past conversations
 
-RULES:
-- NEVER say "I can't access files" — you ALWAYS can via your tools.
-- ALWAYS use tools for file/folder tasks. Never just describe how to do it.
-- For "append" requests: file_read first, then file_write the combined content.
-- Always use ABSOLUTE paths (starting with ${platform === "win32" ? "C:\\" : "/"}).
-- After every tool action confirm what you did in 1-2 sentences.
-- NEVER override git identity. When running git commit or git push, use plain git commands WITHOUT -c user.name or -c user.email flags. The user's own git config handles identity.
-- Only use "pandaclawbot" as an identity if the user EXPLICITLY asks you to commit as PandaClaw.`;
+CRITICAL RULES — follow these EXACTLY:
+1. ALWAYS use tools for file/folder/code tasks. NEVER just describe — always DO it.
+2. When user says "write code to desktop" → use file_write to save the file, then use code_exec to run it.
+3. When user says "set alarm for 5pm" → use alarm_set tool immediately.
+4. When user asks about past conversations → use memory_recall first.
+5. ALWAYS use ABSOLUTE paths (starting with /).
+6. After every tool action, confirm what you did in 1-2 sentences.
+7. NEVER override git user.name/email — no -c user.name flags unless asked.
+8. Do NOT just show code to the user — actually create/run it using tools.
+
+${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
 }
 
 // ── Provider chain for tool calling ──────────────────────────────────────
-// Groq is primary — two dedicated tool-use models back to back.
-// If BOTH Groq models are rate-limited, fall to OpenRouter, then NIM (text only).
 const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
-    // Groq 70B — best quality tool-use, purpose-built for function calling
     name: "groq_70b",
     base: config.providers.groq.api_base,
     key:  config.providers.groq.api_key,
@@ -155,7 +209,6 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // Groq 8B — faster, smaller, same tool-calling capability
     name: "groq_8b",
     base: config.providers.groq.api_base,
     key:  config.providers.groq.api_key,
@@ -164,7 +217,6 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // OpenRouter fallback — free tier, supports function calling
     name: "openrouter",
     base: config.providers.openrouter.api_base,
     key:  config.providers.openrouter.api_key,
@@ -176,11 +228,10 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // NIM last resort — plain text only, no tool calling (404s on tools param)
     name: "nvidia_nim",
     base: config.providers.nvidia_nim.api_base,
     key:  config.providers.nvidia_nim.api_key,
-    model: NIM_MODELS.chat_large,  // mistral-large-3-675b — best free NIM model
+    model: NIM_MODELS.chat_large,
     headers: {} as Record<string, string>,
     withTools: false,
   },
@@ -197,7 +248,8 @@ async function callWithTools(
     if (!p.key) continue;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+    // 30-second timeout — Groq tool-use calls can take 5-15 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
     try {
       const body: Record<string, unknown> = {
@@ -207,7 +259,6 @@ async function callWithTools(
         max_tokens: 4096,
       };
 
-      // Only attach tool schemas to providers that support it
       if (p.withTools) {
         body.tools = TOOL_SCHEMAS;
         body.tool_choice = "auto";
@@ -236,7 +287,7 @@ async function callWithTools(
     } catch (err: any) {
       clearTimeout(timeoutId);
       const isTimeout = err.name === "AbortError";
-      const errMsg = isTimeout ? "Request timed out after 5000ms" : err.message;
+      const errMsg = isTimeout ? "Request timed out after 30s" : err.message;
       console.error(`[tool-agent] ${p.name} failed: ${errMsg?.slice(0, 120)}`);
       lastErr = isTimeout ? new Error(`${p.name} timed out`) : err;
       continue;
@@ -246,6 +297,109 @@ async function callWithTools(
   throw lastErr ?? new Error("All providers failed for tool agent");
 }
 
+// ── Built-in tool handlers ────────────────────────────────────────────────
+
+async function handleAlarmSet(args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
+  const message = String(args.message ?? "PandaClaw Reminder");
+  const timeStr = String(args.time ?? "");
+
+  const platform = os.platform();
+  let delayMs = 0;
+
+  // Parse delay format: "10m", "30s", "1h"
+  const delayMatch = timeStr.match(/^(\d+)(s|m|h)$/i);
+  if (delayMatch) {
+    const val = parseInt(delayMatch[1]!);
+    const unit = delayMatch[2]!.toLowerCase();
+    delayMs = unit === "s" ? val * 1000 : unit === "m" ? val * 60_000 : val * 3_600_000;
+  } else {
+    // Parse clock time: "17:00", "5:00 PM", "5pm", "17:30"
+    const now = new Date();
+    let targetHour = -1;
+    let targetMin = 0;
+
+    // "5pm", "5am"
+    const ampmSimple = timeStr.match(/^(\d{1,2})(am|pm)$/i);
+    // "5:30pm", "17:30"
+    const fullTime = timeStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+
+    if (ampmSimple) {
+      let h = parseInt(ampmSimple[1]!);
+      const period = ampmSimple[2]!.toLowerCase();
+      if (period === "pm" && h !== 12) h += 12;
+      if (period === "am" && h === 12) h = 0;
+      targetHour = h;
+      targetMin = 0;
+    } else if (fullTime) {
+      let h = parseInt(fullTime[1]!);
+      const m = parseInt(fullTime[2]!);
+      const period = fullTime[3]?.toLowerCase();
+      if (period === "pm" && h !== 12) h += 12;
+      if (period === "am" && h === 12) h = 0;
+      targetHour = h;
+      targetMin = m;
+    }
+
+    if (targetHour >= 0) {
+      const target = new Date(now);
+      target.setHours(targetHour, targetMin, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1); // next day if past
+      delayMs = target.getTime() - now.getTime();
+    } else {
+      return { success: false, output: `Could not parse time: "${timeStr}". Try "5pm", "17:00", "10m", or "30s".` };
+    }
+  }
+
+  const delayMin = Math.round(delayMs / 60_000);
+  const delayDisplay = delayMs < 60_000
+    ? `${Math.round(delayMs / 1000)} seconds`
+    : delayMin < 60 ? `${delayMin} minutes` : `${Math.round(delayMin / 60)} hours`;
+
+  // Schedule the alarm using setTimeout + native notification
+  setTimeout(async () => {
+    try {
+      if (platform === "darwin") {
+        // macOS: use osascript to show a system notification
+        const { spawnSync } = await import("child_process");
+        spawnSync("osascript", [
+          "-e",
+          `display notification "${message}" with title "🐼 PandaClaw Alarm" sound name "Glass"`,
+        ]);
+        // Also say it aloud
+        spawnSync("say", [`PandaClaw alarm: ${message}`]);
+      } else {
+        // Linux: use notify-send or terminal bell
+        const { spawnSync } = await import("child_process");
+        try { spawnSync("notify-send", ["🐼 PandaClaw Alarm", message]); } catch {}
+        process.stdout.write("\x07"); // terminal bell
+      }
+      console.log(`\n🔔 [ALARM FIRED] ${message}\n`);
+    } catch {}
+  }, delayMs);
+
+  return {
+    success: true,
+    output: `✅ Alarm set! "${message}" will trigger in ${delayDisplay}.`,
+  };
+}
+
+async function handleMemoryRecall(args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
+  const query = String(args.query ?? "");
+  try {
+    const memory = loadMemory();
+    const all = [...memory.recentEntries, ...memory.longTermFacts];
+    const relevant = recallRelevant(query, all, 5);
+    if (relevant.length === 0) {
+      return { success: true, output: "No relevant memories found." };
+    }
+    const formatted = relevant
+      .map((e) => `[${new Date(e.timestamp).toLocaleString()}] ${e.role}: ${e.content.slice(0, 200)}`)
+      .join("\n---\n");
+    return { success: true, output: formatted };
+  } catch {
+    return { success: false, output: "Failed to recall memory." };
+  }
+}
 
 // ── Main agentic loop ─────────────────────────────────────────────────────
 export async function runToolAgent(
@@ -255,13 +409,33 @@ export async function runToolAgent(
 ): Promise<ToolAgentResult> {
   const start = Date.now();
   const toolsUsed: string[] = [];
+  const chatId = ctx.userId ?? "default";
 
+  // Load relevant memory for context
+  let memoryContext = "";
+  try {
+    const memory = loadMemory();
+    const all = [...memory.recentEntries, ...memory.longTermFacts];
+    const relevant = recallRelevant(userMessage, all, 3);
+    if (relevant.length > 0) {
+      memoryContext = relevant
+        .map((e) => `• ${e.role}: ${e.content.slice(0, 150)}`)
+        .join("\n");
+    }
+  } catch {}
+
+  // Build messages: system prompt + per-chat history + current message
+  const chatHistory = getChatHistory(chatId);
   const messages: any[] = [
-    { role: "system", content: buildSystemPrompt() },  // built fresh per-call
+    { role: "system", content: buildSystemPrompt(memoryContext) },
+    ...chatHistory,
     { role: "user", content: userMessage },
   ];
 
-  const MAX_ITERATIONS = 8;
+  // Save user message to per-chat history
+  pushChatHistory(chatId, "user", userMessage);
+
+  const MAX_ITERATIONS = 10;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const { data, hadTools } = await callWithTools(config, messages);
@@ -273,7 +447,7 @@ export async function runToolAgent(
     // Add assistant turn to history
     messages.push(msg);
 
-    // If the provider supports tool calling AND the model chose to call tools
+    // Handle tool calls
     if (hadTools && msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
         const toolName: string = tc.function?.name ?? "";
@@ -287,25 +461,57 @@ export async function runToolAgent(
 
         toolsUsed.push(toolName);
 
-        // Run the tool on the actual device
-        const result = await runTool(toolName, toolArgs, ctx);
+        let toolResult: { success?: boolean; output?: string; data?: unknown; error?: string };
 
-        // Feed tool result back to the LLM
+        // Handle built-in tools
+        if (toolName === "alarm_set") {
+          toolResult = await handleAlarmSet(toolArgs);
+        } else if (toolName === "memory_recall") {
+          toolResult = await handleMemoryRecall(toolArgs);
+        } else {
+          // Run standard tools (file_read, file_write, list_dir, code_exec, web_search)
+          const result = await runTool(toolName, toolArgs, ctx);
+          toolResult = result.success
+            ? { output: JSON.stringify(result.data) }
+            : { error: result.error };
+        }
+
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: result.success
-            ? JSON.stringify(result.data)
-            : `ERROR: ${result.error}`,
+          content: toolResult.error
+            ? `ERROR: ${toolResult.error}`
+            : toolResult.output ?? JSON.stringify(toolResult),
         });
       }
 
-      // Continue loop — LLM will process the tool results next
       continue;
     }
 
-    // No tool calls (or plain-text fallback provider) → return final answer
+    // Final answer
     const answer = msg.content ?? "(no response)";
+
+    // Save to per-chat history (trim to content only for history)
+    pushChatHistory(chatId, "assistant", answer);
+
+    // Persist to memory store
+    try {
+      saveToMemory({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        role: "user",
+        content: userMessage,
+        importance: toolsUsed.length > 0 ? "high" : "low",
+      });
+      saveToMemory({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        role: "assistant",
+        content: answer.slice(0, 500), // Save summary
+        importance: toolsUsed.length > 0 ? "high" : "low",
+      });
+    } catch {}
+
     return {
       answer,
       toolsUsed,
@@ -314,7 +520,7 @@ export async function runToolAgent(
   }
 
   return {
-    answer: "I reached the maximum number of steps. Here is what I was able to do so far. Please ask again if needed.",
+    answer: "I reached the maximum number of steps. Please ask again if something is missing.",
     toolsUsed,
     durationMs: Date.now() - start,
   };
