@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  🌐 <strong><a href="https://pandaclaw.vercel.app">pandaclaw.vercel.app</a></strong>
+  🌐 <strong><a href="https://pandaclaw.vercel.app">pandaclaw.vercel.app</a></strong> &nbsp;|&nbsp; 📦 <strong><a href="https://www.npmjs.com/package/pandaclaw">npm Registry</a></strong>
 </p>
 
 <p align="center">
@@ -17,6 +17,7 @@
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-v5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://groq.com/"><img src="https://img.shields.io/badge/Groq-Llama%203.1%20%26%203.3-orange?style=for-the-badge" alt="Groq Llama 3.1 & 3.3"></a>
   <a href="https://openrouter.ai/"><img src="https://img.shields.io/badge/OpenRouter-Qwen%203%20%2F%20Gemma%204-deepskyblue?style=for-the-badge" alt="OpenRouter Qwen 3 / Gemma 4"></a>
+  <a href="https://www.npmjs.com/package/pandaclaw"><img src="https://img.shields.io/npm/v/pandaclaw?style=for-the-badge&logo=npm&color=red" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
 </p>
 
