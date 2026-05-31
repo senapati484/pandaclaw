@@ -42,7 +42,7 @@ export interface ActionLog {
 
 // ============ Model & LLM Types ============
 
-export type ModelProvider = "groq" | "openrouter" | "nvidia_nim";
+export type ModelProvider = "groq" | "openrouter" | "nvidia_nim" | "ollama";
 
 export type ModelTaskType = "planning" | "coding" | "analysis" | "reflection";
 

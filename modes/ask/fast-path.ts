@@ -110,11 +110,14 @@ export async function runFastPath(
   const { maxTokens, temperature } = config.routing.fast_path;
 
   // ── Provider fallback chain ──
-  // 1. Groq (fast_path primary)
-  // 2. OpenRouter with a free/cheap model
-  // 3. Nvidia NIM
+  // 1. Groq 70B (primary)
+  // 2. Groq 8B (fast, separate rate-limit bucket)
+  // 3. OpenRouter Llama 3.3 70B free
+  // 4. OpenRouter DeepSeek V4 Flash free (1M context)
+  // 5. Nvidia NIM (chat model)
+  // 6. Ollama (local fallback — always available if running)
   const chain: Array<() => Promise<{ data: LLMResponse; provider: string } | null>> = [
-    // ── Groq 70B — primary, best quality ──────────────────────────────────
+    // ── Groq 70B — primary, best quality ────────────────────────────────
     () =>
       tryProvider(
         config.providers.groq.api_base,
@@ -124,7 +127,7 @@ export async function runFastPath(
         maxTokens,
         temperature
       ),
-    // ── Groq 8B — fast fallback, separate rate-limit bucket ───────────────
+    // ── Groq 8B — fast fallback, separate rate-limit bucket ──────────────
     () =>
       tryProvider(
         config.providers.groq.api_base,
@@ -134,7 +137,7 @@ export async function runFastPath(
         maxTokens,
         temperature
       ),
-    // ── OpenRouter Llama 3.3 70B — verified free model with tool calling ──
+    // ── OpenRouter Llama 3.3 70B — verified free model ──────────────────
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
@@ -148,12 +151,12 @@ export async function runFastPath(
           "X-Title": "PandaClaw",
         }
       ),
-    // ── OpenRouter free router — auto-selects best available free model ────
+    // ── OpenRouter DeepSeek V4 Flash — 1M context, fast, reliable free ───
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        "openrouter/free",
+        "deepseek/deepseek-v4-flash:free",
         messages,
         maxTokens,
         temperature,
@@ -162,12 +165,22 @@ export async function runFastPath(
           "X-Title": "PandaClaw",
         }
       ),
-    // ── NIM — last resort ─────────────────────────────────────────────────
+    // ── NIM — cloud GPU fallback ────────────────────────────────────
     () =>
       tryProvider(
         config.providers.nvidia_nim.api_base,
         config.providers.nvidia_nim.api_key,
-        NIM_MODELS.chat_large,   // mistralai/mistral-large-3-675b-instruct-2512
+        NIM_MODELS.chat_fast,   // meta/llama-3.1-70b-instruct
+        messages,
+        maxTokens,
+        temperature
+      ),
+    // ── Ollama — local fallback, always available if running ────────────
+    () =>
+      tryProvider(
+        config.providers.ollama?.api_base ?? "http://127.0.0.1:11434/v1",
+        config.providers.ollama?.api_key ?? "ollama",
+        "qwen3:0.6b",
         messages,
         maxTokens,
         temperature
@@ -188,6 +201,8 @@ export async function runFastPath(
         ? "groq"
         : result.provider.includes("openrouter")
         ? "openrouter"
+        : result.provider.includes("11434") || result.provider.includes("ollama")
+        ? "ollama"
         : "nvidia_nim";
 
       return {

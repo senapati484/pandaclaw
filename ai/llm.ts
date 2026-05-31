@@ -11,6 +11,16 @@ export interface LLMCallOptions {
   max_tokens?: number;
 }
 
+/** Sentinel error for HTTP 429 — bypasses retry logic to immediately trigger provider fallback */
+class RateLimitError extends Error {
+  constructor(url: string, retryAfterSec: number) {
+    super(
+      `Rate limit (429) on ${url}${retryAfterSec > 0 ? ` (retry-after: ${retryAfterSec}s)` : ""}. Skipping to next provider.`
+    );
+    this.name = "RateLimitError";
+  }
+}
+
 export async function fetchWithRetry(
   url: string,
   options: RequestInit,
@@ -21,34 +31,16 @@ export async function fetchWithRetry(
     try {
       const res = await fetch(url, options);
       if (res.status === 429) {
-        attempt++;
-        if (attempt >= maxRetries) return res;
-
+        // Throw sentinel immediately — do NOT retry 429s, let provider fallback handle it
         const retryAfterHeader = res.headers.get("retry-after");
-        let delayMs = 1500 * Math.pow(2, attempt - 1);
-        if (retryAfterHeader) {
-          const parsed = parseFloat(retryAfterHeader);
-          if (!isNaN(parsed)) {
-            delayMs = parsed * 1000;
-          }
-        }
-
-        if (delayMs > 3000) {
-          throw new Error(`Rate limit (429) hit on ${url} with a long delay of ${delayMs}ms. Failing immediately to trigger fallback.`);
-        }
-
-        console.warn(
-          chalk.yellow(
-            `\n⏳ Rate limit (429) hit on ${url}. Retrying in ${delayMs}ms... (Attempt ${attempt}/${maxRetries})\n`
-          )
-        );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        continue;
+        const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : 0;
+        throw new RateLimitError(url, retryAfterSec);
       }
       return res;
     } catch (err: any) {
-      if (err.name === "AbortError") {
-        throw err; // Timeout: propagate instantly
+      // RateLimitError and AbortError propagate immediately — no retries
+      if (err.name === "RateLimitError" || err.name === "AbortError") {
+        throw err;
       }
       attempt++;
       if (attempt >= maxRetries) throw err;
@@ -82,23 +74,30 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
       continue;
     }
 
-    // Determine model
+    // Determine model — use per-provider routing config when available, then sensible defaults
     let model = config.routing.fast_path.model;
-    if (providerName !== preferredProvider) {
-      // Fallback defaults
-      if (providerName === "groq") {
-        model = "llama-3.3-70b-versatile";
-      } else if (providerName === "openrouter") {
-        model = "openrouter/free";
-      } else if (providerName === "nvidia_nim") {
-        model = "meta/llama-3.2-11b-vision-instruct";
-      } else if (providerName === "ollama") {
-        model = "qwen3:0.6b";
-      }
+    let extraHeaders: Record<string, string> = {};
+
+    if (providerName === "groq") {
+      model = config.routing.fast_path.provider === "groq"
+        ? config.routing.fast_path.model
+        : "llama-3.3-70b-versatile";
+    } else if (providerName === "openrouter") {
+      // Use the routing config model (meta-llama/llama-3.3-70b-instruct:free) — NOT the fake "openrouter/free"
+      model = config.routing.panda_mode?.model ?? "meta-llama/llama-3.3-70b-instruct:free";
+      extraHeaders = {
+        "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+        "X-Title": "PandaClaw",
+      };
+    } else if (providerName === "nvidia_nim") {
+      // Use the chat model, not the vision model
+      model = "meta/llama-3.1-70b-instruct";
+    } else if (providerName === "ollama") {
+      model = "qwen3:0.6b";
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12_000);
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
     try {
       const res = await fetchWithRetry(`${provider.api_base}/chat/completions`, {
@@ -106,6 +105,7 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${provider.api_key}`,
+          ...extraHeaders,
         },
         body: JSON.stringify({
           model,
@@ -163,8 +163,9 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
     } catch (err: any) {
       clearTimeout(timeoutId);
       const isTimeout = err.name === "AbortError";
-      const errMsg = isTimeout ? "Request timed out after 12s" : err.message;
-      lastError = isTimeout ? new Error(`${providerName} timed out after 12s`) : err;
+      const errMsg = isTimeout ? "Request timed out after 15s" : err.message;
+      lastError = isTimeout ? new Error(`${providerName} timed out after 15s`) : err;
+      console.warn(chalk.yellow(`\n⚡ [callLLM] ${providerName} failed: ${errMsg?.slice(0, 120)}. Trying next provider...\n`));
     }
   }
 

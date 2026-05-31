@@ -69,10 +69,10 @@ export const skill = {
   test("loads dynamic skills from skills/ folder", async () => {
     const loaded = await loadDynamicSkills(process.cwd());
     expect(loaded.test_dynamic_skill).toBeDefined();
-    expect(loaded.test_dynamic_skill.description).toBe("A dynamic skill for testing");
-    expect(loaded.test_dynamic_skill.risky).toBe(false);
+    expect(loaded.test_dynamic_skill!.description).toBe("A dynamic skill for testing");
+    expect(loaded.test_dynamic_skill!.risky).toBe(false);
 
-    const res = await loaded.test_dynamic_skill.execute({ value: 123 }, {} as any);
+    const res = await loaded.test_dynamic_skill!.execute({ value: 123 }, {} as any);
     expect(res).toEqual({ result: "dynamic_hello", value: 123 });
   });
 

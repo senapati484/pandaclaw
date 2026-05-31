@@ -385,11 +385,23 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // OpenRouter smart free router — auto-selects best available free model
-    name: "openrouter_free",
+    // Google Gemma 3 27B (free) — strong open model, good at following instructions
+    name: "openrouter_gemma3",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
-    model: "openrouter/free",
+    model: "google/gemma-3-27b-it:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // DeepSeek V4 Flash (free) — 1M context, reliable fallback
+    name: "openrouter_deepseek_v4",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "deepseek/deepseek-v4-flash:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",
@@ -400,7 +412,7 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     name: "nvidia_nim",
     base: config.providers.nvidia_nim?.api_base,
     key:  config.providers.nvidia_nim?.api_key,
-    model: NIM_MODELS.chat_large,
+    model: NIM_MODELS.chat_fast,
     headers: {} as Record<string, string>,
     withTools: false,
   },

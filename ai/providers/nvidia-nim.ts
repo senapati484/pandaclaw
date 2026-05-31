@@ -13,6 +13,8 @@ export const NIM_MODELS = {
   // ── General / Agentic text ──────────────────────────────────────────────
   // Large MoE, best quality for reasoning, chat, agentic tasks
   chat_large:   "mistralai/mistral-large-3-675b-instruct-2512",
+  // Llama 3.1 70B — fast chat fallback (lower latency, lower cost)
+  chat_fast:    "meta/llama-3.1-70b-instruct",
 
   // ── Vision / Multimodal ─────────────────────────────────────────────────
   // Excels at image + audio reasoning (screenshots, documents, UI analysis)

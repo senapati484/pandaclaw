@@ -16,7 +16,7 @@ describe("Active Context Compaction", () => {
     }
     originalFetch = globalThis.fetch;
     // Mock fetch for LLM call
-    globalThis.fetch = (async (url) => {
+    globalThis.fetch = (async (_url: string) => {
       return new Response(JSON.stringify({
         choices: [
           {
@@ -65,8 +65,8 @@ describe("Active Context Compaction", () => {
 
     const historyAfter = loadChatHistory(chatId, 100);
     expect(historyAfter.length).toBe(10);
-    expect(historyAfter[0].content).toBe("Message number 5");
-    expect(historyAfter[9].content).toBe("Message number 14");
+    expect(historyAfter[0]!.content).toBe("Message number 5");
+    expect(historyAfter[9]!.content).toBe("Message number 14");
 
     expect(existsSync(COMPACTED_PATH)).toBe(true);
     const content = readFileSync(COMPACTED_PATH, "utf8");
