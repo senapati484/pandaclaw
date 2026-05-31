@@ -1,19 +1,89 @@
 // tools/file-tools.ts
 // File read/write/list tools — full device access, no path sandbox.
+// file_write performs an automatic syntax check after writing code files (.py, .sh, .ts, .js)
+// so the LLM immediately knows if it wrote syntactically invalid code.
 
 import type { ToolDefinition } from "../modes/agent/types.js";
 import os from "os";
 import path from "path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
+import { spawnSync } from "child_process";
 
-/** Resolve a path that may be relative OR absolute. Supports ~/ home notation and falls back to process.cwd() for relative paths. */
+/** Resolve a path that may be relative OR absolute. Supports ~/ home notation. */
 function resolvePath(inputPath: string): string {
   if (inputPath.startsWith("~/")) {
     return path.resolve(os.homedir(), inputPath.slice(2));
   }
   if (path.isAbsolute(inputPath)) return inputPath;
-  // Relative paths resolve from the current working directory of the project
   return path.resolve(process.cwd(), inputPath);
+}
+
+/**
+ * Run a quick syntax-only check on the written file based on its extension.
+ * Returns "OK" on clean parse, or a short error message on failure.
+ * Returns null for unsupported file types (no check needed).
+ */
+function syntaxCheck(filePath: string): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (ext === ".py") {
+    // Python syntax check — py_compile exits 0 on success, 1 on error
+    const result = spawnSync("python3", ["-m", "py_compile", filePath], {
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    if (result.error) return null; // python3 not available — skip
+    if (result.status !== 0) {
+      const msg = (result.stderr ?? "").trim();
+      // Strip the leading "  File ..." line for brevity
+      const firstError = msg.split("\n").slice(-2).join(" ").trim();
+      return `SYNTAX ERROR: ${firstError || msg}`;
+    }
+    return "OK";
+  }
+
+  if (ext === ".sh" || ext === ".bash") {
+    // Bash syntax check — bash -n never executes, just parses
+    const result = spawnSync("bash", ["-n", filePath], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    if (result.error) return null; // bash not available
+    if (result.status !== 0) {
+      const msg = (result.stderr ?? "").trim();
+      return `SYNTAX ERROR: ${msg}`;
+    }
+    return "OK";
+  }
+
+  if (ext === ".ts" || ext === ".tsx" || ext === ".js" || ext === ".jsx" || ext === ".mjs") {
+    // Bun type-check (fast — uses Bun's built-in TS parser)
+    // bun --check is silent on success, prints errors on failure
+    const result = spawnSync("bun", ["--check", filePath], {
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    if (result.error) return null; // bun not available
+    if (result.status !== 0) {
+      const msg = ((result.stderr ?? "") + (result.stdout ?? "")).trim();
+      const firstLine = msg.split("\n")[0]?.trim() ?? msg;
+      return `SYNTAX ERROR: ${firstLine}`;
+    }
+    return "OK";
+  }
+
+  // JSON — use Node's JSON.parse
+  if (ext === ".json") {
+    try {
+      const content = readFileSync(filePath, "utf8");
+      JSON.parse(content);
+      return "OK";
+    } catch (e: any) {
+      return `SYNTAX ERROR: ${e.message}`;
+    }
+  }
+
+  return null; // No check for other file types
 }
 
 export const fileReadTool: ToolDefinition = {
@@ -34,8 +104,11 @@ export const fileReadTool: ToolDefinition = {
 
 export const fileWriteTool: ToolDefinition = {
   name: "file_write",
-  description: "Write or create any file anywhere on the device",
-  risky: false,           // ← no consent gate for Telegram (already authorized user)
+  description:
+    "Write or create any file anywhere on the device. " +
+    "For code files (.py, .sh, .ts, .js, .json) automatically runs a syntax check after writing " +
+    "and returns a 'syntaxCheck' field so you know immediately if the code is valid.",
+  risky: false,
   readOnly: false,
   execute: async (args) => {
     const filePath = resolvePath(args.path as string);
@@ -46,7 +119,34 @@ export const fileWriteTool: ToolDefinition = {
     }
 
     writeFileSync(filePath, args.content as string, "utf8");
-    return `✅ Written to: ${filePath}`;
+
+    // Count lines for a useful summary
+    const lines = (args.content as string).split("\n").length;
+
+    // Auto syntax-check code files
+    const syntaxResult = syntaxCheck(filePath);
+
+    if (syntaxResult !== null) {
+      return {
+        written: true,
+        path: filePath,
+        lines,
+        syntaxCheck: syntaxResult,
+        ...(syntaxResult !== "OK"
+          ? {
+              action:
+                "Syntax check FAILED. Call file_read to inspect the file, fix the error, " +
+                "call file_write again with the corrected content, then re-run.",
+            }
+          : { action: "Syntax check passed. File is ready to run." }),
+      };
+    }
+
+    return {
+      written: true,
+      path: filePath,
+      lines,
+    };
   },
 };
 

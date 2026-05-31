@@ -36,12 +36,30 @@ export async function runPandaMode(
   ];
 
   // ── STEP 1: REASON — try each model in turn ──
+
+  // Detect if the request is code-related so we can inject quality heuristics
+  const codeKeywords = /\b(write|create|generate|make|build|implement|code|script|program|function|class|module|fix|refactor|debug|edit)\b/i;
+  const isCodeRequest = codeKeywords.test(task.input);
+
+  const codeQualityAddendum = isCodeRequest
+    ? `
+
+CODE QUALITY REQUIREMENTS (mandatory for this request):
+- All paths must be dynamic (os.path.expanduser, $HOME, os.homedir()) — NEVER hardcode /home/user or C:\\Users\\...
+- Wrap all IO and network calls in try/except (Python) or try/catch (Node/Bun)
+- Shell scripts must start with "set -euo pipefail"
+- Scripts accepting user input must detect if stdin is a TTY (sys.stdin.isatty() / process.stdin.isTTY) and include a non-interactive fallback that runs without crashing when stdin is empty
+- Add a shebang line to all scripts (#!/usr/bin/env python3 or #!/usr/bin/env bash)
+- Python: use specific exception types, never bare except
+- After writing code, state that it should be verified by running it`
+    : "";
+
   const reasonMessages = [
     {
       role: "system",
       content: `You are PandaClaw, a thoughtful AI agent.
 For complex requests: think step by step before answering.
-Put your reasoning in <think>...</think> tags, then give your final answer.`,
+Put your reasoning in <think>...</think> tags, then give your final answer.${codeQualityAddendum}`,
     },
     // Last 4 messages for context
     ...task.conversationHistory.slice(-4),
