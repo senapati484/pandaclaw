@@ -11,6 +11,55 @@ export interface LLMCallOptions {
   max_tokens?: number;
 }
 
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429) {
+        attempt++;
+        if (attempt >= maxRetries) return res;
+
+        const retryAfterHeader = res.headers.get("retry-after");
+        let delayMs = 1500 * Math.pow(2, attempt - 1);
+        if (retryAfterHeader) {
+          const parsed = parseFloat(retryAfterHeader);
+          if (!isNaN(parsed)) {
+            delayMs = parsed * 1000;
+          }
+        }
+
+        console.warn(
+          chalk.yellow(
+            `\n⏳ Rate limit (429) hit on ${url}. Retrying in ${delayMs}ms... (Attempt ${attempt}/${maxRetries})\n`
+          )
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        throw err; // Timeout: propagate instantly
+      }
+      attempt++;
+      if (attempt >= maxRetries) throw err;
+      const delayMs = 1500 * Math.pow(2, attempt - 1);
+      console.warn(
+        chalk.yellow(
+          `\n⚠️ Network/API error on ${url}: ${err.message}. Retrying in ${delayMs}ms...\n`
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error("Max retries reached");
+}
+
 /**
  * Robust LLM completion call with automatic provider fallback and Groq tool-calling bug patching
  */
@@ -42,8 +91,11 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
       }
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12_000);
+
     try {
-      const res = await fetch(`${provider.api_base}/chat/completions`, {
+      const res = await fetchWithRetry(`${provider.api_base}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -57,7 +109,10 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
           temperature: options.temperature ?? 0.1,
           max_tokens: options.max_tokens,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errText = await res.text();
@@ -100,31 +155,46 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
 
       return data;
     } catch (err: any) {
-      lastError = err;
+      clearTimeout(timeoutId);
+      const isTimeout = err.name === "AbortError";
+      const errMsg = isTimeout ? "Request timed out after 12s" : err.message;
+      lastError = isTimeout ? new Error(`${providerName} timed out after 12s`) : err;
     }
   }
 
   throw lastError || new Error("All LLM providers in fallback chain failed.");
 }
 
-function sanitizeMessages(messages: any[]): any[] {
+export function sanitizeMessages(messages: any[]): any[] {
   return messages.map((m) => {
     const clean: any = {
       role: m.role,
-      content: m.content || null,
     };
-    if (m.name !== undefined) clean.name = m.name;
-    if (m.tool_calls !== undefined) {
-      clean.tool_calls = m.tool_calls.map((tc: any) => ({
-        id: tc.id,
-        type: tc.type || "function",
-        function: {
-          name: tc.function.name,
-          arguments: tc.function.arguments,
-        },
-      }));
+
+    if (m.role === "assistant") {
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        clean.content = m.content || null;
+        clean.tool_calls = m.tool_calls.map((tc: any) => ({
+          id: tc.id,
+          type: tc.type || "function",
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          },
+        }));
+      } else {
+        // Assistant message without tool calls MUST have string content (cannot be null)
+        clean.content = m.content ?? "";
+      }
+    } else if (m.role === "tool") {
+      clean.content = m.content ?? "";
+      clean.tool_call_id = m.tool_call_id;
+    } else {
+      // user, system
+      clean.content = m.content ?? "";
     }
-    if (m.tool_call_id !== undefined) clean.tool_call_id = m.tool_call_id;
+
+    if (m.name !== undefined) clean.name = m.name;
     return clean;
   });
 }

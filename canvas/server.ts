@@ -6,7 +6,7 @@ const PORT = 18789;
 
 // Instantiate the Gateway
 const gateway = new Gateway();
-gateway.start();
+gateway.start(["webchat"]);
 
 // Broadcast helper for logs
 const activeWebSockets = new Set<any>();

@@ -29,10 +29,13 @@ export class Gateway {
     return this.adapters.get(name);
   }
 
-  public async start(): Promise<void> {
+  public async start(channels?: string[]): Promise<void> {
     console.log(chalk.hex("#5b4d9e")("\n🐼 Starting PandaClaw Gateway..."));
 
     for (const [name, adapter] of this.adapters) {
+      if (channels && !channels.includes(name)) {
+        continue;
+      }
       try {
         await adapter.initialize();
         console.log(chalk.gray(`  ⚡ Loaded channel: [${name}]`));

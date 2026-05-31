@@ -3,6 +3,7 @@
 
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
+import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -53,7 +54,7 @@ Put your reasoning in <think>...</think> tags, then give your final answer.`,
 
   for (const pandaModel of pandaModels) {
     try {
-      const reasonRes = await fetch(`${config.providers.openrouter.api_base}/chat/completions`, {
+      const reasonRes = await fetchWithRetry(`${config.providers.openrouter.api_base}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -63,7 +64,7 @@ Put your reasoning in <think>...</think> tags, then give your final answer.`,
         },
         body: JSON.stringify({
           model: pandaModel,
-          messages: reasonMessages,
+          messages: sanitizeMessages(reasonMessages),
           max_tokens: maxTokens,
           temperature,
         }),

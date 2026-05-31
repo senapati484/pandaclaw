@@ -6,6 +6,7 @@ import path from "path";
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
+import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -60,14 +61,14 @@ async function tryProvider(
   const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout for fast path
 
   try {
-    const res = await fetch(`${apiBase}/chat/completions`, {
+    const res = await fetchWithRetry(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         ...extraHeaders,
       },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
+      body: JSON.stringify({ model, messages: sanitizeMessages(messages), max_tokens: maxTokens, temperature }),
       signal: controller.signal,
     });
 

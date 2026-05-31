@@ -22,13 +22,13 @@
     },
     "panda_mode": {
       "provider": "openrouter",
-      "model": "deepseek/deepseek-r1:free",
+      "model": "meta-llama/llama-3.3-70b-instruct:free",
       "temperature": 0.1,
       "maxTokens": 8192
     },
     "planning": {
       "provider": "openrouter",
-      "model": "deepseek/deepseek-chat-v3-0324:free",
+      "model": "meta-llama/llama-3.3-70b-instruct:free",
       "temperature": 0.2,
       "maxTokens": 4096
     },

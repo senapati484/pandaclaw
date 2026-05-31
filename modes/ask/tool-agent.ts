@@ -17,6 +17,7 @@ import {
   loadChatHistory,
   recallRelevantRelations
 } from "../../memory/store.js";
+import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
 
 export interface ToolAgentResult {
   answer: string;
@@ -352,13 +353,13 @@ async function callWithTools(
     if (!p.key) continue;
     
     const controller = new AbortController();
-    // 30-second timeout — Groq tool-use calls can take 5-15 seconds
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    // 10-second timeout — Groq tool-use calls can take 5-15 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
     try {
       const body: Record<string, unknown> = {
         model: p.model,
-        messages,
+        messages: sanitizeMessages(messages),
         temperature: 0.1,
         max_tokens: 4096,
       };
@@ -368,7 +369,7 @@ async function callWithTools(
         body.tool_choice = "auto";
       }
 
-      const res = await fetch(`${p.base}/chat/completions`, {
+      const res = await fetchWithRetry(`${p.base}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -391,9 +392,9 @@ async function callWithTools(
     } catch (err: any) {
       clearTimeout(timeoutId);
       const isTimeout = err.name === "AbortError";
-      const errMsg = isTimeout ? "Request timed out after 30s" : err.message;
+      const errMsg = isTimeout ? "Request timed out after 10s" : err.message;
       console.error(`[tool-agent] ${p.name} failed: ${errMsg?.slice(0, 120)}`);
-      lastErr = isTimeout ? new Error(`${p.name} timed out`) : err;
+      lastErr = isTimeout ? new Error(`${p.name} timed out after 10s`) : err;
       continue;
     }
   }

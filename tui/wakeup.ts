@@ -57,7 +57,7 @@ export async function runWakeup () {
         await acquireLock();
         const { Gateway } = await import("../modes/gateway/index.js");
         const gateway = new Gateway();
-        await gateway.start();
+        await gateway.start(["telegram"]);
         await new Promise<never>(() => {});
     } else if (mode === "exit") {
         console.log(SHADOW("Goodbye, panda! 👋"));
