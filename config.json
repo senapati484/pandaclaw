@@ -32,13 +32,13 @@
     },
     "panda_mode": {
       "provider": "openrouter",
-      "model": "meta-llama/llama-3.3-70b-instruct:free",
+      "model": "qwen/qwen3-coder:free",
       "temperature": 0.1,
       "maxTokens": 8192
     },
     "planning": {
       "provider": "openrouter",
-      "model": "meta-llama/llama-3.3-70b-instruct:free",
+      "model": "qwen/qwen3-next-80b-a3b-instruct:free",
       "temperature": 0.2,
       "maxTokens": 4096
     },

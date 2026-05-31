@@ -353,11 +353,11 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // Llama 3.3 70B (free) — verified on OpenRouter, 131K ctx, great tool calling
-    name: "openrouter_llama",
+    // Qwen3 Coder 480B A35B (free) — 1M context, best free model for code & agentic tasks
+    name: "openrouter_qwen3_coder",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
-    model: "meta-llama/llama-3.3-70b-instruct:free",
+    model: "qwen/qwen3-coder:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",
@@ -365,7 +365,67 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // GPT-OSS 120B (free) — OpenAI OSS model on OpenRouter, strong tool calling
+    // NVIDIA Nemotron 3 Super 120B (free) — 1M context, strong reasoning + tool calling
+    name: "openrouter_nemotron_super",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "nvidia/nemotron-3-super-120b-a12b:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // Google Gemma 4 31B (free) — 262K context, reasoning support, native function calling
+    name: "openrouter_gemma4_31b",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "google/gemma-4-31b-it:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // Qwen3 Next 80B A3B (free) — 262K context, structured outputs + tool calling
+    name: "openrouter_qwen3_80b",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "qwen/qwen3-next-80b-a3b-instruct:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // MoonshotAI Kimi K2.6 (free) — 262K context, agentic + multi-agent optimised
+    name: "openrouter_kimi_k2",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "moonshotai/kimi-k2.6:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // Google Gemma 4 26B A4B MoE (free) — 262K context, only 3.8B active params = ultra fast
+    name: "openrouter_gemma4_26b",
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
+    model: "google/gemma-4-26b-a4b-it:free",
+    headers: {
+      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+      "X-Title": "PandaClaw",
+    } as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // OpenAI GPT-OSS 120B (free) — 131K context, strong tool calling
     name: "openrouter_gpt_oss",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
@@ -377,11 +437,11 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // DeepSeek V4 Flash (free) — 1M context, fast
-    name: "openrouter_deepseek_flash",
+    // Z.ai GLM 4.5 Air (free) — 131K context, reasoning + tool calling
+    name: "openrouter_glm45_air",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
-    model: "deepseek/deepseek-v4-flash:free",
+    model: "z-ai/glm-4.5-air:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",
@@ -389,23 +449,11 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // Google Gemma 3 27B (free) — strong open model, good at following instructions
-    name: "openrouter_gemma3",
+    // Meta Llama 3.3 70B (free) — 131K context, battle-tested tool calling
+    name: "openrouter_llama",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
-    model: "google/gemma-3-27b-it:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // DeepSeek V4 Flash (free) — 1M context, reliable fallback
-    name: "openrouter_deepseek_v4",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "deepseek/deepseek-v4-flash:free",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
       "X-Title": "PandaClaw",

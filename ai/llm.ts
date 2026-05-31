@@ -83,8 +83,8 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
         ? config.routing.fast_path.model
         : "llama-3.3-70b-versatile";
     } else if (providerName === "openrouter") {
-      // Use the routing config model (meta-llama/llama-3.3-70b-instruct:free) — NOT the fake "openrouter/free"
-      model = config.routing.panda_mode?.model ?? "meta-llama/llama-3.3-70b-instruct:free";
+      // Gemma 4 26B MoE: ultra-fast (only 3.8B active params), 262K ctx, verified free
+      model = config.routing.panda_mode?.model ?? "google/gemma-4-26b-a4b-it:free";
       extraHeaders = {
         "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
         "X-Title": "PandaClaw",

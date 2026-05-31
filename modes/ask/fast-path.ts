@@ -137,12 +137,12 @@ export async function runFastPath(
         maxTokens,
         temperature
       ),
-    // ── OpenRouter Llama 3.3 70B — verified free model ──────────────────
+    // ── OpenRouter Gemma 4 26B A4B MoE — ultra-fast (only 3.8B active params) ──
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-4-26b-a4b-it:free",   // 262K ctx, MoE = very fast
         messages,
         maxTokens,
         temperature,
@@ -151,12 +151,68 @@ export async function runFastPath(
           "X-Title": "PandaClaw",
         }
       ),
-    // ── OpenRouter DeepSeek V4 Flash — 1M context, fast, reliable free ───
+    // ── OpenRouter Qwen3 Next 80B — 262K context, structured outputs ───────
     () =>
       tryProvider(
         config.providers.openrouter.api_base,
         config.providers.openrouter.api_key,
-        "deepseek/deepseek-v4-flash:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        messages,
+        maxTokens,
+        temperature,
+        {
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        }
+      ),
+    // ── OpenRouter Gemma 4 31B — 262K context, reasoning ──────────────────
+    () =>
+      tryProvider(
+        config.providers.openrouter.api_base,
+        config.providers.openrouter.api_key,
+        "google/gemma-4-31b-it:free",
+        messages,
+        maxTokens,
+        temperature,
+        {
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        }
+      ),
+    // ── OpenRouter Nemotron 3 Super 120B — 1M ctx, NVIDIA reasoning ────────
+    () =>
+      tryProvider(
+        config.providers.openrouter.api_base,
+        config.providers.openrouter.api_key,
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        messages,
+        maxTokens,
+        temperature,
+        {
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        }
+      ),
+    // ── OpenRouter Qwen3 Coder 480B — 1M ctx, best free model overall ──────
+    () =>
+      tryProvider(
+        config.providers.openrouter.api_base,
+        config.providers.openrouter.api_key,
+        "qwen/qwen3-coder:free",
+        messages,
+        maxTokens,
+        temperature,
+        {
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        }
+      ),
+    // ── OpenRouter Llama 3.3 70B — 131K ctx, battle-tested ─────────────────
+    () =>
+      tryProvider(
+        config.providers.openrouter.api_base,
+        config.providers.openrouter.api_key,
+        "meta-llama/llama-3.3-70b-instruct:free",
         messages,
         maxTokens,
         temperature,
