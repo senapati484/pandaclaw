@@ -391,6 +391,7 @@ export interface ToolDefinition {
   description: string;
   risky: boolean;
   readOnly: boolean;
+  schema?: any;
   execute: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
 }
 

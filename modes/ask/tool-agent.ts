@@ -185,6 +185,7 @@ const TOOL_SCHEMAS = [
           }
         },
         required: ["app", "action"]
+      }
     }
   },
   {
@@ -333,16 +334,16 @@ ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}`
 const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
     name: "groq_70b",
-    base: config.providers.groq.api_base,
-    key:  config.providers.groq.api_key,
+    base: config.providers.groq?.api_base,
+    key:  config.providers.groq?.api_key,
     model: "llama-3.3-70b-versatile",
     headers: {} as Record<string, string>,
     withTools: true,
   },
   {
     name: "groq_8b",
-    base: config.providers.groq.api_base,
-    key:  config.providers.groq.api_key,
+    base: config.providers.groq?.api_base,
+    key:  config.providers.groq?.api_key,
     model: "llama-3.1-8b-instant",
     headers: {} as Record<string, string>,
     withTools: true,
@@ -350,8 +351,8 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
     // Llama 3.3 70B (free) — verified on OpenRouter, 131K ctx, great tool calling
     name: "openrouter_llama",
-    base: config.providers.openrouter.api_base,
-    key:  config.providers.openrouter.api_key,
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
     model: "meta-llama/llama-3.3-70b-instruct:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
@@ -362,8 +363,8 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
     // GPT-OSS 120B (free) — OpenAI OSS model on OpenRouter, strong tool calling
     name: "openrouter_gpt_oss",
-    base: config.providers.openrouter.api_base,
-    key:  config.providers.openrouter.api_key,
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
     model: "openai/gpt-oss-120b:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
@@ -374,8 +375,8 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
     // DeepSeek V4 Flash (free) — 1M context, fast
     name: "openrouter_deepseek_flash",
-    base: config.providers.openrouter.api_base,
-    key:  config.providers.openrouter.api_key,
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
     model: "deepseek/deepseek-v4-flash:free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
@@ -386,8 +387,8 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
     // OpenRouter smart free router — auto-selects best available free model
     name: "openrouter_free",
-    base: config.providers.openrouter.api_base,
-    key:  config.providers.openrouter.api_key,
+    base: config.providers.openrouter?.api_base,
+    key:  config.providers.openrouter?.api_key,
     model: "openrouter/free",
     headers: {
       "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
@@ -397,8 +398,8 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   },
   {
     name: "nvidia_nim",
-    base: config.providers.nvidia_nim.api_base,
-    key:  config.providers.nvidia_nim.api_key,
+    base: config.providers.nvidia_nim?.api_base,
+    key:  config.providers.nvidia_nim?.api_key,
     model: NIM_MODELS.chat_large,
     headers: {} as Record<string, string>,
     withTools: false,
@@ -420,6 +421,27 @@ async function callWithTools(
 ): Promise<any> {
   let lastErr: Error | null = null;
 
+  // Build the unified list of tools including statically defined and dynamic tools
+  const allToolSchemas = [...TOOL_SCHEMAS];
+  for (const [name, tool] of Object.entries(TOOLS)) {
+    if (!allToolSchemas.some(s => s.function?.name === name)) {
+      const toolSchema = tool.schema || {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: "object",
+            properties: {
+              arguments: { type: "string", description: "Optional raw arguments or inputs for the tool." }
+            }
+          }
+        }
+      };
+      allToolSchemas.push(toolSchema);
+    }
+  }
+
   for (const p of TOOL_PROVIDERS(config)) {
     if (!p.key) continue;
     
@@ -436,7 +458,7 @@ async function callWithTools(
       };
 
       if (p.withTools) {
-        body.tools = TOOL_SCHEMAS;
+        body.tools = allToolSchemas;
         body.tool_choice = "auto";
       }
 
