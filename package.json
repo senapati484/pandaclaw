@@ -1,6 +1,7 @@
 {
   "name": "pandaclaw",
   "version": "1.0.0",
+  "description": "A deliberate, reasoning-first, and vision-native personal AI assistant built on Bun.",
   "module": "index.ts",
   "type": "module",
   "bin": {
@@ -19,12 +20,34 @@
     "sandbox",
     "tools",
     "tui",
+    "utils",
     "vision"
   ],
   "scripts": {
     "dev": "bun run index.ts",
     "dashboard": "bun run canvas/server.ts"
   },
+  "author": "Sayan Senapati <sayansenapati2544@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/senapati484/pandaclaw.git"
+  },
+  "bugs": {
+    "url": "https://github.com/senapati484/pandaclaw/issues"
+  },
+  "homepage": "https://github.com/senapati484/pandaclaw#readme",
+  "keywords": [
+    "ai",
+    "agent",
+    "swarm",
+    "reasoning",
+    "vision",
+    "automation",
+    "bun",
+    "tui",
+    "dashboard"
+  ],
   "devDependencies": {
     "@types/bun": "latest"
   },
