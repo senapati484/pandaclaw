@@ -39,33 +39,33 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
     *   `visualizer`: Extracts spatial layout elements or builds UI reports.
 *   **R1 Reasoning Compiler**: Extracts and parses structured DeepSeek R1 `<think>` traces and applies critique-correction verification loops.
 
-### 🧠 3. PandaGraph Semantic Memory Engine
+### 🧠 3. PandaGraph Semantic Memory Engine & Active Context Compaction
 *   **Persistent Chat History**: Every message (user and assistant) is saved to `.pandaclaw/chats.jsonl` indexed by `chatId`. Conversation history persists seamlessly across gateway restarts!
 *   **Knowledge Graph (Triplet Store)**: Semantic facts (user preferences, configurations, constraints, success patterns) are extracted and saved as relationships (`subject`, `predicate`, `object`) inside `.pandaclaw/graph_memory.json`.
 *   **Auto-Sync Markdown**: Graph states are automatically formatted into a gorgeous, human-friendly document under **`.pandaclaw/KNOWLEDGE_GRAPH.md`** whenever the graph is modified.
+*   **Active Context Compaction**: To prevent prompt token bloat, when the active conversation history exceeds **12 turns**, the oldest **4 turns** are pruned and summarized into key semantic facts, appended to **`.pandaclaw/COMPACTED_MEMORY.md`**, and cleared from the live model context.
 *   **TF-IDF Semantic Recall**: An in-process keyword matching and term weight scorer (`recallRelevantRelations`) retrieves facts locally in **< 1ms** with zero API cost, keeping prompt contexts ultra-lean and relevant.
 *   **Async Background Consolidation**: Every **3 messages**, the gateway automatically spawns a non-blocking background consolidation task to extract new facts from raw logs and write them to the graph without delaying user chat responses.
 
-### ⚡ 4. Token Minimization & JSON Compression
-*   **`compressJson` Utility**: Any JSON structure returned from tools is recursively processed to strip all spacing, newlines, and pretty-print formatting.
-*   - Slices and prunes long arrays to a maximum of 15 items.
-  - Truncates excessively long text values (strings >250 characters, e.g. base64 images or raw HTML scrapes) to prevent token bloat.
-  - Prunes deep nested elements beyond depth 5.
-*   **Minified Storage**: All system-generated JSON files (e.g. `graph_memory.json` and `paired-users.json`) are stored in minified format on disk for fast read/write times.
+### 🔌 4. Pluggable Dynamic Skills Loader
+*   **Runtime Custom Plugins**: PandaClaw recursively scans the `skills/` workspace folder at startup.
+*   **Automatic Registration**: Any dynamic tool exported from `skills/` files as a `ToolDefinition` is automatically imported and registered, giving the agent customizable capabilities without modifying the core codebase.
 
 ### 🎙️ 5. Native Voice & Audio processing
 *   **Groq Whisper Integration**: Converts speech buffers (OGG, OPUS, MP3, WAV, MPEG) into text in **< 1 second** using Groq's high-performance `whisper-large-v3` endpoint.
 *   **Gateway Adapters Support**: When a voice message is received from a paired Telegram user, the bot automatically downloads, transcribes, previews, and processes it inside the agent pipeline.
 
-### 🎨 6. Local Visual Web Canvas
+### 🎨 6. Local Visual Web Canvas & Agent Drawing
 *   Serve a premium glassmorphic dashboard locally on `http://localhost:18789`.
 *   **Chat Interface**: Real-time messaging with visual thinking traces.
 *   **Visual Canvas**: Real-time canvas overlay rendering bounding box coordinates from the vision locating pipeline.
+*   **Interactive Drawing**: The agent uses the `canvas_control` tool to draw rectangles (`draw_rect`), render customized HTML cards (`render_html`), or reset/clear the canvas viewport (`clear_canvas`) dynamically.
 *   **Terminal & Diff Viewer**: Live system websocket logs with interactive Accept/Decline approval keys for file mutations.
 
-### ⚡ 7. Pluggable Gateway & 3-Way Routing
+### ⚡ 7. Pluggable Gateway & Local Ollama Fallback
 *   Abstracted channel adapter layer supporting pluggable integrations (`telegram`, `slack`, `webchat`).
 *   **Allowed Users Pairing**: Paired Telegram user IDs are stored per-device in `.pandaclaw/paired-users.json` (gitignored), ensuring committed configuration files are never contaminated or leaked.
+*   **Local Fallback Chain**: If external LLMs rate limit (429), time out, or fail, the call automatically routes down the fallback chain to a local **Ollama** endpoint (`qwen3:0.6b` model) to maintain continuous runtime operations.
 *   **3-Way Classifier**: Routes queries dynamically:
     - `simple`  → snappier direct answering without tools (`runFastPath`).
     - `complex` → deep reasoning path using DeepSeek R1 compiler (`runPandaMode`).
@@ -74,6 +74,7 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
 ### 🕹️ 8. Cross-Platform Full-Device Automation
 *   **Dynamic OS Detection**: Automatically adapts parameters and runs native command streams across macOS (`darwin`), Windows (`win32`), and Linux (`linux`).
 *   **System & Service Controls**: Launch directories directly in Visual Studio Code, manage background service processes (such as starting/stopping **Ollama** services), adjust audio output **volume** or display **brightness** level sliders, and manage system clipboard operations.
+*   **Native macOS Screen Capture**: High-speed, native capture of the desktop via `screencapture -x` integrated under the `app_control` system action suite, supplying images directly to the vision pipeline.
 *   **Advanced Web Orchestration**: List all open tabs (Title + URL) across windows, switch or focus tabs dynamically by title matching or index, trigger browser navigations (back, forward, refresh, close), and scroll windows (up, down, top, bottom) in Chrome, Safari (macOS), Microsoft Edge (Windows fallback), or Firefox (Linux fallback).
 *   **Simulated Keystrokes & Hotkeys**: Simulates typed strings and hotkey keyboard presses (e.g. `cmd+space` to launch Spotlight) natively using macOS System Events, Windows .NET Forms SendKeys interfaces, and Linux `xdotool` key managers.
 
@@ -91,10 +92,10 @@ pandaclaw/
 │   └── providers/
 │       ├── nvidia-nim.ts       # NIM Vision Models
 │       └── r1-compiler.ts      # DeepSeek R1 Parsing & Verifier
-├── sandbox/                     # Bun-Native Process Sandbox
+├── sandbox/                    # Bun-Native Process Sandbox
 ├── fs/                         # Transactional Git File System
 ├── memory/
-│   ├── store.ts                # Persistent Chats, Graph and Scorer
+│   ├── store.ts                # Persistent Chats, Graph and Active Pruner
 │   └── consolidator.ts         # Triplet Relationship Summarizer
 ├── modes/
 │   ├── cli.ts                  # Interactive CLI Sub-modes
@@ -106,8 +107,11 @@ pandaclaw/
 │   └── gateway/                # Unified Channel Gateway & Pluggable Adapters
 ├── canvas/                     # Local Canvas Web Dashboard Server
 ├── vision/                     # 4-stage Vision Pipeline (Perceive → Locate → Reason → Act)
-├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, Sandbox Exec, macOS Alarms, Cross-Platform App Controls)
-└── tests/                      # Suite of 36 Unit Tests (Swarm, Sandbox, Transactions, PandaGraph, App-Control)
+├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, macOS Alarms, Dynamic Skills)
+│   ├── dynamic-loader.ts       # Recursive directory skill loader
+│   └── canvas-tools.ts         # Visual canvas control interface
+├── skills/                     # Workspace folder for pluggable user skills
+└── tests/                      # Suite of 39 Unit Tests (Swarm, Compaction, Loaders, Sandbox, Transactions)
 ```
 
 ---
@@ -171,6 +175,10 @@ You can also create or edit `config.json` manually:
     "nvidia_nim": {
       "api_key": "YOUR_NVIDIA_NIM_KEY",
       "api_base": "https://integrate.api.nvidia.com/v1"
+    },
+    "ollama": {
+      "api_key": "ollama",
+      "api_base": "http://127.0.0.1:11434/v1"
     }
   }
 }
