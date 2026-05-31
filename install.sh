@@ -81,7 +81,19 @@ chmod +x "$INSTALL_DIR/index.ts"
 echo -e "${BLUE}🔗 Registering 'pandaclaw' CLI command globally...${NC}"
 if command -v npm &> /dev/null; then
     # npm install -g . is the most reliable cross-platform global linker
-    npm install -g . &> /dev/null || bun link &> /dev/null
+    if npm install -g . &> /dev/null; then
+        echo -e "${GREEN}✓ Registered globally via npm${NC}"
+    elif [ -x "$(command -v sudo)" ]; then
+        echo -e "${BLUE}🔒 Global directory requires write permissions. Retrying with sudo...${NC}"
+        if sudo npm install -g . &> /dev/null; then
+            echo -e "${GREEN}✓ Registered globally via npm (with sudo)${NC}"
+        else
+            echo -e "${BLUE}Retrying with bun link...${NC}"
+            sudo bun link &> /dev/null || bun link &> /dev/null
+        fi
+    else
+        bun link &> /dev/null
+    fi
 else
     bun link &> /dev/null
 fi
