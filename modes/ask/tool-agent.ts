@@ -333,18 +333,22 @@ ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}`
 // ── Provider chain for tool calling ──────────────────────────────────────
 const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
-    name: "groq_70b",
-    base: config.providers.groq?.api_base,
-    key:  config.providers.groq?.api_key,
-    model: "llama-3.3-70b-versatile",
-    headers: {} as Record<string, string>,
-    withTools: true,
-  },
-  {
+    // PRIMARY — llama-3.1-8b-instant: 14.4K req/day, 500K tokens/day
+    // Best rate limits on Groq, fast tool calling for standard tasks
     name: "groq_8b",
     base: config.providers.groq?.api_base,
     key:  config.providers.groq?.api_key,
     model: "llama-3.1-8b-instant",
+    headers: {} as Record<string, string>,
+    withTools: true,
+  },
+  {
+    // FALLBACK — llama-3.3-70b-versatile: 1K req/day, better reasoning
+    // Used when 8b fails or task needs stronger model
+    name: "groq_70b",
+    base: config.providers.groq?.api_base,
+    key:  config.providers.groq?.api_key,
+    model: "llama-3.3-70b-versatile",
     headers: {} as Record<string, string>,
     withTools: true,
   },

@@ -110,29 +110,29 @@ export async function runFastPath(
   const { maxTokens, temperature } = config.routing.fast_path;
 
   // ── Provider fallback chain ──
-  // 1. Groq 70B (primary)
-  // 2. Groq 8B (fast, separate rate-limit bucket)
+  // 1. Groq 8B instant (PRIMARY — 14.4K req/day, 500K tokens/day)
+  // 2. Groq 70B versatile (fallback for harder queries — 1K req/day)
   // 3. OpenRouter Llama 3.3 70B free
   // 4. OpenRouter DeepSeek V4 Flash free (1M context)
   // 5. Nvidia NIM (chat model)
   // 6. Ollama (local fallback — always available if running)
   const chain: Array<() => Promise<{ data: LLMResponse; provider: string } | null>> = [
-    // ── Groq 70B — primary, best quality ────────────────────────────────
+    // ── Groq 8B instant — PRIMARY (14.4K req/day, fast, avoids rate limits) ──
     () =>
       tryProvider(
         config.providers.groq.api_base,
         config.providers.groq.api_key,
-        config.routing.fast_path.model,   // llama-3.3-70b-versatile
+        config.routing.fast_path.model,   // llama-3.1-8b-instant
         messages,
         maxTokens,
         temperature
       ),
-    // ── Groq 8B — fast fallback, separate rate-limit bucket ──────────────
+    // ── Groq 70B versatile — heavy fallback (1K req/day, better reasoning) ──
     () =>
       tryProvider(
         config.providers.groq.api_base,
         config.providers.groq.api_key,
-        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
         messages,
         maxTokens,
         temperature
