@@ -1,3 +1,6 @@
+import { initDynamicSkills } from "../tools/index.js";
+await initDynamicSkills(process.cwd());
+
 import { Gateway } from "../modes/gateway/index.js";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
@@ -60,6 +63,16 @@ const server = Bun.serve({
         broadcastLog({ type: "output", text: reply });
 
         return new Response(JSON.stringify({ reply }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+    }
+
+    // Canvas Control Endpoint
+    if (url.pathname === "/api/canvas" && req.method === "POST") {
+      return req.json().then((body: any) => {
+        broadcastLog({ type: "canvas_update", action: body.action, data: body.data });
+        return new Response(JSON.stringify({ success: true }), {
           headers: { "Content-Type": "application/json" },
         });
       });

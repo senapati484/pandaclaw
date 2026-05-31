@@ -88,6 +88,8 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
         model = "openrouter/free";
       } else if (providerName === "nvidia_nim") {
         model = "meta/llama-3.2-11b-vision-instruct";
+      } else if (providerName === "ollama") {
+        model = "qwen3:0.6b";
       }
     }
 

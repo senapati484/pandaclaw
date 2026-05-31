@@ -5,7 +5,7 @@ import type { ToolDefinition } from "../../modes/agent/types.js";
 import { openChromeUrl, searchChrome } from "./chrome.js";
 import { openSafariUrl } from "./safari.js";
 import { resolveLatestVideo } from "./youtube.js";
-import { launchVsCode, controlService, adjustSystemSetting, handleClipboard } from "./system.js";
+import { launchVsCode, controlService, adjustSystemSetting, handleClipboard, captureScreen } from "./system.js";
 import { scrollBrowser, navigateBrowser, listTabs, switchToTab } from "./browser-actions.js";
 import { simulateKeystroke, simulateKeyPress } from "./keyboard.js";
 
@@ -78,6 +78,9 @@ export const appControlTool: ToolDefinition = {
             throw new Error("Parameter 'subAction' must be 'read' or 'write' for system clipboard action");
           }
           return await handleClipboard(subAction, text);
+        } else if (action === "screenshot") {
+          const path = String(args.path ?? ".pandaclaw/screenshot.png");
+          return await captureScreen(path);
         }
         throw new Error(`Unsupported system action: "${action}".`);
 

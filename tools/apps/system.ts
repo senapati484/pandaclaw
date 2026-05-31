@@ -268,3 +268,23 @@ export async function handleClipboard(action: "read" | "write", text?: string): 
 
   throw new Error(`Unsupported clipboard action: "${action}"`);
 }
+
+/**
+ * Capture a screenshot of the user's screen (macOS first).
+ */
+export async function captureScreen(outputPath: string): Promise<string> {
+  const resolved = resolvePath(outputPath);
+  const cleanPath = resolved.replace(/"/g, '\\"');
+  const platform = getPlatform();
+
+  if (platform === "darwin") {
+    try {
+      await execShell(`screencapture -x "${cleanPath}"`);
+      return `✅ Screenshot successfully captured and saved to: ${resolved}`;
+    } catch (err: any) {
+      throw new Error(`Failed to capture screen on macOS: ${err.message}`);
+    }
+  }
+
+  throw new Error(`Screen capture is only supported on macOS right now. Current platform: ${platform}`);
+}

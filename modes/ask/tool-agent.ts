@@ -15,7 +15,8 @@ import {
   recallRelevant,
   saveChatMessage,
   loadChatHistory,
-  recallRelevantRelations
+  recallRelevantRelations,
+  pruneAndCompactChats
 } from "../../memory/store.js";
 import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
 
@@ -184,6 +185,28 @@ const TOOL_SCHEMAS = [
           }
         },
         required: ["app", "action"]
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "canvas_control",
+      description: "Control the Visual Canvas dashboard. Draw shapes or display custom HTML elements/layout blocks.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["draw_rect", "render_html", "clear_canvas"], description: "The visual action to dispatch." },
+          x: { type: "number", description: "X coordinate (for draw_rect)." },
+          y: { type: "number", description: "Y coordinate (for draw_rect)." },
+          width: { type: "number", description: "Width of rectangle or HTML container." },
+          height: { type: "number", description: "Height of rectangle." },
+          color: { type: "string", description: "CSS stroke color, e.g. '#5b4d9e' (optional)." },
+          lineWidth: { type: "number", description: "Stroke line width (optional)." },
+          label: { type: "string", description: "Text label to display inside/next to the shape (optional)." },
+          html: { type: "string", description: "HTML layout block to render inside the dashboard viewport (required for render_html)." },
+          clearFirst: { type: "boolean", description: "Whether to clear previous HTML cards first (optional, defaults to false)." }
+        },
+        required: ["action"]
       }
     }
   }
@@ -235,6 +258,7 @@ Your tools:
   alarm_set    → set alarms and reminders
   memory_recall→ recall past conversations
   app_control  → control apps, browsers, system settings
+  canvas_control→ control the Visual Canvas dashboard
 
 ══════════════════════════════════════════════════
 ⚠️  MANDATORY BEHAVIOR — NEVER VIOLATE THESE:
@@ -378,6 +402,14 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     model: NIM_MODELS.chat_large,
     headers: {} as Record<string, string>,
     withTools: false,
+  },
+  {
+    name: "ollama",
+    base: config.providers.ollama?.api_base || "http://127.0.0.1:11434/v1",
+    key:  config.providers.ollama?.api_key || "ollama",
+    model: "qwen3:0.6b",
+    headers: {} as Record<string, string>,
+    withTools: true,
   },
 ];
 
@@ -652,6 +684,11 @@ export async function runToolAgent(
 
     // Save to per-chat history (trim to content only for history)
     pushChatHistory(chatId, "assistant", answer);
+
+    // Prune and compact oldest chat logs if history size exceeds the limit (run in background)
+    pruneAndCompactChats(chatId, 12, config).catch((err) => {
+      console.warn(`[compaction check] Compaction failed: ${err.message}`);
+    });
 
     // Persist to memory store
     try {

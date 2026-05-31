@@ -11,6 +11,10 @@
     "nvidia_nim": {
       "api_key": "",
       "api_base": "https://integrate.api.nvidia.com/v1"
+    },
+    "ollama": {
+      "api_key": "ollama",
+      "api_base": "http://127.0.0.1:11434/v1"
     }
   },
   "routing": {
@@ -63,7 +67,8 @@
     "fallback_chain": [
       "groq",
       "openrouter",
-      "nvidia_nim"
+      "nvidia_nim",
+      "ollama"
     ]
   },
   "tools": {

@@ -7,6 +7,50 @@ const logContainer = document.getElementById("terminal-logs");
 ws.onmessage = (event) => {
   try {
     const data = JSON.parse(event.data);
+    
+    if (data.type === "canvas_update") {
+      const entry = document.createElement("div");
+      entry.className = "log-entry system";
+      entry.textContent = `[canvas] Action: ${data.action}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+
+      const cardContainer = document.getElementById("html-card-container");
+      
+      if (data.action === "draw_rect") {
+        bgLabel.style.display = "none";
+        const params = data.data || {};
+        ctx.strokeStyle = params.color || "#5b4d9e";
+        ctx.lineWidth = params.lineWidth || 2;
+        ctx.strokeRect(params.x || 0, params.y || 0, params.width || 50, params.height || 50);
+        if (params.label) {
+          ctx.fillStyle = params.color || "#e8dcf8";
+          ctx.font = "12px JetBrains Mono";
+          ctx.fillText(params.label, (params.x || 0) + 5, (params.y || 0) + 15);
+        }
+      } else if (data.action === "render_html") {
+        bgLabel.style.display = "none";
+        if (data.data?.clearFirst) {
+          cardContainer.innerHTML = "";
+        }
+        const card = document.createElement("div");
+        card.style.background = "rgba(18, 12, 33, 0.85)";
+        card.style.border = "1px solid var(--border-color)";
+        card.style.borderRadius = "12px";
+        card.style.padding = "15px";
+        card.style.color = "var(--text-color)";
+        card.style.width = data.data?.width || "90%";
+        card.style.pointerEvents = "auto";
+        card.innerHTML = data.data?.html || "";
+        cardContainer.appendChild(card);
+      } else if (data.action === "clear_canvas") {
+        drawGrid();
+        cardContainer.innerHTML = "";
+        bgLabel.style.display = "block";
+      }
+      return;
+    }
+
     const entry = document.createElement("div");
     entry.className = `log-entry ${data.type || "system"}`;
     

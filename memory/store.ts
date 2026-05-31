@@ -3,6 +3,8 @@
 import path from "path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import type { MemoryEntry, PersistentMemory } from "../modes/agent/types.js";
+import type { PandaConfig } from "../ai/ai.config.js";
+import { callLLM } from "../ai/llm.js";
 
 const MEMORY_PATH = ".pandaclaw/memory.jsonl";
 const CHATS_PATH = ".pandaclaw/chats.jsonl";
@@ -264,5 +266,89 @@ export function recallRelevant(
     .sort((a, b) => b.score - a.score)
     .slice(0, topK)
     .map((s) => s.entry);
+}
+
+export async function pruneAndCompactChats(chatId: string, keepLimit = 12, config: PandaConfig): Promise<void> {
+  ensureDir();
+  if (!existsSync(CHATS_PATH)) return;
+
+  let allMessages: ChatMessage[] = [];
+  try {
+    const text = readFileSync(CHATS_PATH, "utf8");
+    const lines = text.split("\n").filter((l) => l.trim());
+    for (const line of lines) {
+      try {
+        allMessages.push(JSON.parse(line) as ChatMessage);
+      } catch {}
+    }
+  } catch {
+    return;
+  }
+
+  const chatMsgs = allMessages.filter(m => m.chatId === chatId);
+  if (chatMsgs.length <= keepLimit) return;
+
+  const toPrune = chatMsgs.slice(0, chatMsgs.length - keepLimit);
+  const toKeep = chatMsgs.slice(chatMsgs.length - keepLimit);
+
+  // Format pruned messages for compaction
+  const prunedText = toPrune.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
+
+  const prompt = `You are the memory compaction engine for PandaClaw.
+Analyze these older conversation turns that are being pruned from active memory.
+Extract any important facts, user preferences, project structures, success patterns, or rules.
+Format the output as a list of semantic triplets (one per line):
+Subject | Predicate | Object
+
+Example:
+User | prefers | TypeScript with Bun
+System | uses | macOS osascript for alarms
+
+Do not include any other conversational text or markdown formatting.`;
+
+  try {
+    const data = await callLLM(config, {
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: prunedText }
+      ],
+      max_tokens: 1024,
+      temperature: 0.2
+    });
+
+    const response = data.choices?.[0]?.message?.content ?? "";
+    const lines = response.split("\n").filter((l: string) => l.trim());
+    
+    // Save triplets to knowledge graph
+    for (const line of lines) {
+      const cleanLine = line.replace(/^[\s•\-\d\.\*]+/, "").trim();
+      const parts = cleanLine.split("|").map((p: string) => p.trim());
+      if (parts.length === 3) {
+        const [subject, predicate, object] = parts;
+        if (subject && predicate && object) {
+          saveGraphRelation({ subject, predicate, object });
+        }
+      }
+    }
+
+    // Also append a human-readable summary to COMPACTED_MEMORY.md
+    const compactedPath = ".pandaclaw/COMPACTED_MEMORY.md";
+    const timestamp = new Date().toLocaleString();
+    const appendText = `\n### Compacted Memory (${timestamp})\n${response}\n`;
+    writeFileSync(compactedPath, appendText, { flag: "a", encoding: "utf8" });
+
+  } catch (err: any) {
+    console.warn(`[compaction] Failed to compact memory: ${err.message}`);
+  }
+
+  // Filter allMessages to only keep the 'toKeep' messages for this chatId, and all messages for other chatIds
+  const updatedMessages = allMessages.filter(m => {
+    if (m.chatId !== chatId) return true;
+    return toKeep.some(k => k.timestamp === m.timestamp && k.content === m.content && k.role === m.role);
+  });
+
+  // Write back to chats.jsonl
+  const newText = updatedMessages.map(m => JSON.stringify(m)).join("\n") + "\n";
+  writeFileSync(CHATS_PATH, newText, "utf8");
 }
 

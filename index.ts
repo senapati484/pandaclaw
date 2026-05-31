@@ -30,4 +30,7 @@ program
         await runSetup();
     });
 
+import { initDynamicSkills } from "./tools/index.js";
+await initDynamicSkills(process.cwd());
+
 await program.parseAsync((globalThis as any).process.argv);

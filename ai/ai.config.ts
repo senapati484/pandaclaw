@@ -8,6 +8,7 @@ export interface PandaConfig {
     groq:       { api_key: string; api_base: string };
     openrouter: { api_key: string; api_base: string };
     nvidia_nim: { api_key: string; api_base: string };
+    ollama?:    { api_key: string; api_base: string };
   };
   routing: {
     fast_path:         { provider: string; model: string; temperature: number; maxTokens: number };
@@ -74,6 +75,16 @@ export function readConfig(): PandaConfig {
   // Nvidia NIM
   const nimKey = process.env.NVIDIA_NIM_API_KEY || process.env.NVIDIA_NIM_KEY;
   if (nimKey) file.providers.nvidia_nim.api_key = nimKey;
+
+  // Ollama
+  if (!file.providers.ollama) {
+    file.providers.ollama = {
+      api_key: "ollama",
+      api_base: "http://127.0.0.1:11434/v1"
+    };
+  }
+  const ollamaBase = process.env.OLLAMA_API_BASE || process.env.OLLAMA_BASE_URL;
+  if (ollamaBase) file.providers.ollama.api_base = ollamaBase;
 
   // Telegram
   const tgToken = process.env.TELEGRAM_TOKEN || file.telegram?.token || "8867579185:AAFWNWEwn41jfMyaYGiEauTbCieTmr99GoU";
