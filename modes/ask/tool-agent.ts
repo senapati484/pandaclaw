@@ -262,6 +262,7 @@ Your tools:
   8. To open YouTube's latest video: use app_control app='youtube' action='resolve_latest' FIRST, then open the URL with app='chrome'.
   9. For system controls (volume, brightness, VS Code, Ollama): use app_control with app='system'.
   10. For browser tab control (scroll, navigate, switch): use app_control with app='browser_action'.
+  11. When writing/generating scripts designed to accept interactive user input (e.g. input() in Python, readline in Node/Bun), ALWAYS support a non-interactive/fallback execution mode (e.g. by checking if stdin is a TTY, catching EOF errors, accepting command line arguments, or running a pre-defined test demo). This ensures that you can execute and verify your code successfully using code_exec without hanging or failing due to stdin EOF.
 
 ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
 }

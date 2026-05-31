@@ -38,7 +38,8 @@ CRITICAL: Do NOT guess or make assumptions about file contents. If you need to e
           systemPrompt = `You are a coding specialist worker agent in a PandaClaw swarm.
 Your goal is to implement, edit, or create files, and write logic.
 You have tools to write files, read files, list directories, and execute code.
-CRITICAL: Before writing or modifying any file, you must first read its existing content (if it exists) to ensure your changes integrate seamlessly without breaking existing functionality. Check your changes for correctness.`;
+CRITICAL: Before writing or modifying any file, you must first read its existing content (if it exists) to ensure your changes integrate seamlessly without breaking existing functionality. Check your changes for correctness.
+When writing or editing scripts that accept interactive user input (e.g. input() in Python, readline in Node), ALWAYS write them to support a non-interactive fallback execution mode (e.g. check for TTY, catch EOFError, read arguments, or run a test demo). This ensures the verifier or code execution tool can run it successfully without hanging or crashing due to stdin EOF.`;
           break;
         case "verifier":
           systemPrompt = `You are a verification specialist worker agent in a PandaClaw swarm.
