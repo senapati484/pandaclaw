@@ -9,10 +9,14 @@
 </p>
 
 <p align="center">
+  🌐 <strong><a href="https://pandaclaw.vercel.app">pandaclaw.vercel.app</a></strong>
+</p>
+
+<p align="center">
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%E2%89%A5%201.3.3-black?style=for-the-badge&logo=bun" alt="Bun version"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-v5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
-  <a href="https://groq.com/"><img src="https://img.shields.io/badge/Groq-Llama%203-orange?style=for-the-badge" alt="Groq Llama 3"></a>
-  <a href="https://openrouter.ai/"><img src="https://img.shields.io/badge/OpenRouter-R1-deepskyblue?style=for-the-badge" alt="OpenRouter DeepSeek R1"></a>
+  <a href="https://groq.com/"><img src="https://img.shields.io/badge/Groq-Llama%203.1%20%26%203.3-orange?style=for-the-badge" alt="Groq Llama 3.1 & 3.3"></a>
+  <a href="https://openrouter.ai/"><img src="https://img.shields.io/badge/OpenRouter-Qwen%203%20%2F%20Gemma%204-deepskyblue?style=for-the-badge" alt="OpenRouter Qwen 3 / Gemma 4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
 </p>
 
@@ -37,7 +41,7 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
     *   `coder`: Implements logic and creates or modifies source code.
     *   `verifier`: Reviews syntax, runs tests, and sanity checks code.
     *   `visualizer`: Extracts spatial layout elements or builds UI reports.
-*   **R1 Reasoning Compiler**: Extracts and parses structured DeepSeek R1 `<think>` traces and applies critique-correction verification loops.
+*   **Reasoning Compiler**: Extracts and parses structured model reasoning (`<think>`) traces (such as Qwen 3 or DeepSeek R1) and applies critique-correction verification loops.
 
 ### 🧠 3. PandaGraph Semantic Memory Engine & Active Context Compaction
 *   **Persistent Chat History**: Every message (user and assistant) is saved to `.pandaclaw/chats.jsonl` indexed by `chatId`. Conversation history persists seamlessly across gateway restarts!
@@ -67,8 +71,8 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
 *   **Allowed Users Pairing**: Paired Telegram user IDs are stored per-device in `.pandaclaw/paired-users.json` (gitignored), ensuring committed configuration files are never contaminated or leaked.
 *   **Local Fallback Chain**: If external LLMs rate limit (429), time out, or fail, the call automatically routes down the fallback chain to a local **Ollama** endpoint (`qwen3:0.6b` model) to maintain continuous runtime operations.
 *   **3-Way Classifier**: Routes queries dynamically:
-    - `simple`  → snappier direct answering without tools (`runFastPath`).
-    - `complex` → deep reasoning path using DeepSeek R1 compiler (`runPandaMode`).
+    - `simple`  → snappier direct answering without tools (`runFastPath`) using `llama-3.1-8b-instant`.
+    - `complex` → deep reasoning path using the Reasoning Compiler (`runPandaMode`) powered by `qwen/qwen3-coder:free`.
     - `action`  → agentic tool-use loops (`runToolAgent`) with full filesystem/shell access.
 
 ### 🕹️ 8. Cross-Platform Full-Device Automation
@@ -180,6 +184,38 @@ You can also create or edit `config.json` manually:
       "api_key": "ollama",
       "api_base": "http://127.0.0.1:11434/v1"
     }
+  },
+  "routing": {
+    "fast_path": {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "temperature": 0.1,
+      "maxTokens": 2048
+    },
+    "groq_heavy": {
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "temperature": 0.1,
+      "maxTokens": 4096
+    },
+    "panda_mode": {
+      "provider": "openrouter",
+      "model": "qwen/qwen3-coder:free",
+      "temperature": 0.1,
+      "maxTokens": 8192
+    },
+    "planning": {
+      "provider": "openrouter",
+      "model": "qwen/qwen3-next-80b-a3b-instruct:free",
+      "temperature": 0.2,
+      "maxTokens": 4096
+    },
+    "fallback_chain": [
+      "groq",
+      "openrouter",
+      "nvidia_nim",
+      "ollama"
+    ]
   }
 }
 ```
