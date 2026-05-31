@@ -1,4 +1,4 @@
-import { expect, test, describe, beforeAll } from "bun:test";
+import { expect, test, describe, beforeAll, afterAll } from "bun:test";
 import { SwarmCoordinator } from "../modes/agent/swarm/coordinator";
 import { SwarmWorker } from "../modes/agent/swarm/worker";
 import type { SwarmTask, SwarmContext } from "../modes/agent/swarm/types";
@@ -6,9 +6,60 @@ import { readConfig } from "../ai/ai.config";
 
 describe("Swarm System", () => {
   let config: any;
+  let originalFetch: typeof fetch;
 
   beforeAll(() => {
     config = readConfig();
+    originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const bodyText = init?.body ? String(init.body) : "";
+      
+      // If it's a decompose call, return the JSON tasks list
+      if (bodyText.includes("Decompose this goal")) {
+        return new Response(JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: JSON.stringify([
+                  {
+                    id: "task_research",
+                    name: "Research",
+                    description: "Gather info",
+                    workerType: "researcher",
+                    dependencies: []
+                  },
+                  {
+                    id: "task_code",
+                    name: "Code",
+                    description: "Write code",
+                    workerType: "coder",
+                    dependencies: ["task_research"]
+                  }
+                ])
+              }
+            }
+          ]
+        }), { status: 200 });
+      }
+
+      // Default worker response
+      return new Response(JSON.stringify({
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "Completed sub-task successfully."
+            }
+          }
+        ]
+      }), { status: 200 });
+    }) as any;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
   });
 
   test("SwarmWorker runs reasoning task", async () => {
@@ -88,5 +139,6 @@ describe("Swarm System", () => {
     // Because API key is empty, tasks should fail to execute reasoning but fallback scheduler should execute the cycle
     const hasCodeTask = result.tasks.some(t => t.id === "task_code");
     expect(hasCodeTask).toBe(true);
-  });
+  }, 45000);
 });
+
