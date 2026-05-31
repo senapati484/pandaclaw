@@ -33,6 +33,10 @@ export async function fetchWithRetry(
           }
         }
 
+        if (delayMs > 3000) {
+          throw new Error(`Rate limit (429) hit on ${url} with a long delay of ${delayMs}ms. Failing immediately to trigger fallback.`);
+        }
+
         console.warn(
           chalk.yellow(
             `\n⏳ Rate limit (429) hit on ${url}. Retrying in ${delayMs}ms... (Attempt ${attempt}/${maxRetries})\n`
