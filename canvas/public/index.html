@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PandaClaw Canvas Dashboard 🐼</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>PandaClaw Dashboard 🐼</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -15,62 +15,62 @@
     <header class="app-header">
       <div class="logo">
         <span class="panda-emoji">🐼</span>
-        <h1>PandaClaw <span class="v3-badge">v3</span></h1>
+        <h1>PandaClaw</h1>
       </div>
-      <div class="status-bar">
-        <span class="status-indicator online"></span>
-        <span class="status-text">Gateway Online</span>
+      <div class="header-right">
+        <div class="status-bar">
+          <span class="status-indicator online"></span>
+          <span class="status-text">Online</span>
+        </div>
+        <button class="theme-toggle" id="theme-toggle" title="Toggle theme" aria-label="Toggle dark/light theme">🌙</button>
       </div>
     </header>
 
     <main class="dashboard-grid">
-      <!-- Chat Workspace -->
+      <!-- Chat -->
       <section class="panel chat-panel">
         <div class="panel-header">
-          <h2>WebChat Agent</h2>
+          <h2>Chat</h2>
         </div>
         <div class="chat-messages" id="chat-messages">
           <div class="message assistant">
             <div class="msg-bubble">
-              🐼 <strong>PandaClaw:</strong> Hello! How can I assist you with your project today?
+              🐼 <strong>PandaClaw:</strong> Hello! How can I assist you today?
             </div>
           </div>
         </div>
         <form class="chat-input-area" id="chat-form">
-          <input type="text" id="chat-input" placeholder="Type your instruction..." autocomplete="off" />
-          <button type="submit" class="send-btn">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+          <input type="text" id="chat-input" placeholder="Type your instruction..." autocomplete="off">
+          <button type="submit" class="send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
             </svg>
           </button>
         </form>
       </section>
 
-      <!-- Visual Canvas Workspace -->
+      <!-- Canvas -->
       <section class="panel canvas-panel">
-        <div class="panel-header animate-header">
-          <h2>Visual Canvas</h2>
+        <div class="panel-header">
+          <h2>Canvas</h2>
           <div class="canvas-controls">
-            <button class="control-btn active" id="draw-box-btn">Draw Box</button>
             <button class="control-btn" id="clear-canvas-btn">Clear</button>
           </div>
         </div>
         <div class="canvas-viewport">
           <div class="canvas-wrapper">
             <canvas id="visual-canvas" width="640" height="400"></canvas>
-            <div id="html-card-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; display: flex; flex-direction: column; gap: 10px; padding: 15px; box-sizing: border-box; overflow: auto; justify-content: center; align-items: center;"></div>
-            <div class="mock-bg-label">No vision input active. Draw directly to test.</div>
+            <div id="html-card-container" style="position:absolute;inset:0;pointer-events:auto;display:flex;flex-direction:column;gap:8px;padding:12px;overflow:auto;justify-content:center;align-items:center;box-sizing:border-box"></div>
+            <span class="mock-bg-label">Draw on the canvas or send a command</span>
           </div>
         </div>
-        <div class="canvas-coords" id="coords-display">
-          X: 0, Y: 0
-        </div>
+        <div class="canvas-coords" id="coords-display">X: 0, Y: 0</div>
       </section>
 
-      <!-- Logs and Diffs Panel -->
+      <!-- Logs -->
       <section class="panel system-panel">
         <div class="panel-header">
-          <h2>System Diffs & Logs</h2>
+          <h2>Logs & Diffs</h2>
         </div>
         <div class="system-tabs">
           <button class="tab-btn active" id="tab-logs">Logs</button>
@@ -78,18 +78,17 @@
         </div>
         <div class="tab-content" id="panel-logs">
           <div class="terminal-logs" id="terminal-logs">
-            <div class="log-entry system">[system] Server started successfully on port 18789.</div>
-            <div class="log-entry system">[system] Pluggable event gateway listeners attached.</div>
+            <div class="log-entry system">[system] Dashboard ready on port 18789.</div>
           </div>
         </div>
         <div class="tab-content hidden" id="panel-diffs">
           <div class="diff-viewer">
-            <div class="diff-header">Proposed File Mutation: <span class="file-name" id="diff-file-name">src/index.ts</span></div>
-            <pre class="diff-body" id="diff-content">// No mutations proposed yet.</pre>
-          </div>
-          <div class="diff-approvals">
-            <button class="approve-btn" id="btn-approve">Approve</button>
-            <button class="decline-btn" id="btn-decline">Decline</button>
+            <div class="diff-header">File: <span class="file-name" id="diff-file-name">—</span></div>
+            <pre class="diff-body" id="diff-content">No mutations proposed yet.</pre>
+            <div class="diff-approvals">
+              <button class="approve-btn" id="btn-approve">Approve</button>
+              <button class="decline-btn" id="btn-decline">Decline</button>
+            </div>
           </div>
         </div>
       </section>
