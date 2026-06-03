@@ -6,7 +6,7 @@ import path from "path";
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
-import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
+import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;

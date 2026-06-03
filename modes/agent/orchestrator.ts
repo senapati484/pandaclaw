@@ -10,6 +10,12 @@ import { ModelSelector } from "./model-selector";
 import { MutationExecutor } from "./mutation-executor";
 import { ReflectionEngine } from "./reflection-engine";
 import { ActionPlanner } from "./action-planner";
+import { ActionHistory } from "./action-history";
+import { Logger } from "../../utils/logger";
+import { detectFormatter, formatAfterMutation } from "../../tools/code-formatter";
+import { runTestsForChangedFiles } from "./test-runner";
+import { SessionManager, getSessionManager } from "./session-manager";
+import type { SessionData } from "./session-manager";
 
 export class AgentOrchestrator {
   private session: ReactorSession | null = null;
@@ -20,20 +26,24 @@ export class AgentOrchestrator {
   private executor: MutationExecutor | null = null;
   private reflectionEngine: ReflectionEngine | null = null;
   private planner: ActionPlanner;
+  private actionHistory: ActionHistory | null = null;
+  private logger: Logger;
 
   constructor() {
     this.modelSelector = new ModelSelector();
     this.planner = new ActionPlanner();
+    this.logger = new Logger("orchestrator", ".pandaclaw");
   }
 
   /**
    * Initialize a new agent session
    */
-  async initializeSession(goal: string, config?: AgentConfig): Promise<ReactorSession> {
+  async initializeSession(goal: string, config?: AgentConfig, existingSessionId?: string): Promise<ReactorSession> {
     console.log(chalk.cyan("\n🐼 Initializing Agent Session...\n"));
 
     const finalConfig = config || defaultAgentConfig();
-    const sessionId = randomUUID();
+    const sessionId = existingSessionId || randomUUID();
+    const sm = getSessionManager();
 
     // Initialize components
     this.tracker = new ActionTracker();
@@ -44,10 +54,28 @@ export class AgentOrchestrator {
     );
     this.executor = new MutationExecutor(finalConfig.codebasePath, finalConfig);
     this.reflectionEngine = new ReflectionEngine(finalConfig.codebasePath);
+    const histLogger = new Logger("action-history", ".pandaclaw");
+    this.actionHistory = new ActionHistory(finalConfig.codebasePath, histLogger);
 
     // Index codebase
     console.log(chalk.gray("Indexing codebase..."));
     await this.contextManager.indexCodebase();
+
+    // Restore from persistent session if resuming
+    if (existingSessionId) {
+      const stored = sm.loadSession(existingSessionId);
+      if (stored) {
+        if (stored.actions.length > 0) {
+          this.tracker.import(stored.actions);
+        }
+        if (stored.memory) {
+          this.memory.import(stored.memory);
+        }
+        console.log(chalk.green(`✓ Restored session: ${stored.data.name}\n`));
+      }
+    } else {
+      sm.createSession(goal.slice(0, 60), goal, finalConfig.codebasePath, finalConfig);
+    }
 
     // Create session
     this.session = {
@@ -60,7 +88,7 @@ export class AgentOrchestrator {
       sessionMemory: this.memory.export(),
       isRunning: true,
       iterationCount: 0,
-      maxIterations: 20,
+      maxIterations: finalConfig.approvalThresholds?.autoExecuteMutationLimit || 20,
       config: finalConfig,
     };
 
@@ -138,6 +166,19 @@ export class AgentOrchestrator {
               console.log(chalk.green(`✓ Mutation succeeded`));
               this.tracker.updateStatus(action.id, "executed");
               anyExecuted = true;
+
+              // Post-mutation: snapshot for undo/redo
+              if (this.actionHistory && mutation.type !== "shell_command" && mutation.type !== "folder_delete") {
+                this.actionHistory.snapshotBefore(mutation.path, mutation.type, mutation.rationale);
+              }
+
+              // Post-mutation: auto-format if formatter detected
+              const startPath = mutation.path;
+              const projectRoot = this.session.config.codebasePath;
+              formatAfterMutation(startPath, projectRoot);
+
+              // Post-mutation: run tests for affected files
+              runTestsForChangedFiles(projectRoot, [mutation.path]);
             }
           } else {
             this.tracker.log({
@@ -158,6 +199,9 @@ export class AgentOrchestrator {
 
         // Phase 6: REFLECT - Learn from actions
         await this.phaseReflect();
+
+        // Persist session state
+        this.persistSession();
 
         // If we executed something this iteration, check if goal is done
         if (anyExecuted && (await this.isGoalComplete())) {
@@ -186,6 +230,25 @@ export class AgentOrchestrator {
 
     console.log(chalk.cyan("\n🏁 Reactor Loop Complete\n"));
     this.printSessionSummary();
+
+    // Offer undo/redo for the last mutation
+    if (this.actionHistory) {
+      const historySize = this.actionHistory.undoCount();
+      if (historySize > 0) {
+        const undoChoice = await confirm({
+          message: "Undo the last mutation?",
+          initialValue: false,
+        });
+        if (undoChoice) {
+          const undone = await this.actionHistory.undo();
+          if (undone) {
+            console.log(chalk.green(`  ✓ ${undone.description}`));
+          } else {
+            console.log(chalk.yellow("  Nothing to undo."));
+          }
+        }
+      }
+    }
   }
 
   // ============ Reactor Phases ============
@@ -209,13 +272,31 @@ export class AgentOrchestrator {
     if (!this.session) return false;
 
     console.log(chalk.gray("💭 Phase: REASON"));
-    console.log(chalk.gray(`  Goal: ${this.session.goal}`));
 
-    // For now, continue with the plan
+    const goal = this.session.goal;
+    const iterations = this.session.iterationCount;
+    const executedActions = this.tracker?.getExecutedMutations() ?? [];
+    const failedActions = this.tracker?.getFailedMutations() ?? [];
+
+    // Check for goal completion signal based on action results
+    if (failedActions.length > 3) {
+      console.log(chalk.yellow("  ⚠ Too many failures. Stopping."));
+      return false;
+    }
+
+    // After 3+ empty iterations with no failures, stop
+    if (iterations > 3 && executedActions.length === 0 && failedActions.length === 0) {
+      console.log(chalk.yellow("  ⚠ No progress detected. Stopping."));
+      return false;
+    }
+
+    console.log(chalk.gray(`  Goal: ${goal}`));
+    console.log(chalk.gray(`  Executed: ${executedActions.length}, Failed: ${failedActions.length}`));
+
     return true;
   }
 
-  private async phasePlan(): Promise<any> {
+  private async phasePlan(): Promise<import("./types.js").MutationPlan | null> {
     if (!this.session || !this.planner) return null;
 
     console.log(chalk.gray("📋 Phase: PLAN"));
@@ -269,7 +350,6 @@ export class AgentOrchestrator {
   // ============ Helper Methods ============
 
   private async isGoalComplete(): Promise<boolean> {
-    // Check if all planned mutations are complete
     if (!this.tracker) return false;
 
     const pending = this.tracker.getPendingMutations();
@@ -279,6 +359,22 @@ export class AgentOrchestrator {
     }
 
     return false;
+  }
+
+  private persistSession(): void {
+    if (!this.session || !this.tracker || !this.memory) return;
+
+    try {
+      const sm = getSessionManager();
+      sm.saveSession(this.session.id, {
+        iterationCount: this.session.iterationCount,
+        status: this.session.isRunning ? "active" : "paused",
+      } as any);
+      sm.saveActions(this.session.id, this.tracker.export());
+      sm.saveMemory(this.session.id, this.memory.export());
+    } catch {
+      // Non-critical — don't break the loop
+    }
   }
 
   private printSessionSummary(): void {
@@ -383,19 +479,54 @@ import { SwarmCoordinator } from "./swarm/coordinator.js";
 import { readConfig } from "../../ai/ai.config.js";
 
 /**
- * Run the full agent mode flow using the Swarm Coordinator
+ * Run the full agent mode flow with session support
  */
 export async function runAgentMode(): Promise<void> {
   console.log(chalk.cyan("\n🐼 Welcome to Swarm Agent Mode!\n"));
 
-  const goal = await text({
-    message: "What is your goal?",
-    placeholder: "e.g. Create a test file for ActionTracker",
-  });
+  const sm = getSessionManager();
+  const existing = sm.listSessions();
 
-  if (isCancel(goal) || !goal.trim()) {
-    console.log(chalk.yellow("No goal provided. Exiting."));
-    return;
+  let resumeSessionId: string | undefined;
+  let goalText = "";
+
+  // Offer session resume if sessions exist
+  if (existing.length > 0) {
+    const resumeChoice = await select({
+      message: "Resume an existing session or start fresh?",
+      options: [
+        { value: "fresh", label: "Start new session" },
+        ...existing.slice(0, 10).map((s) => ({
+          value: s.id,
+          label: `${s.name} — ${s.goal.slice(0, 50)} [${s.status}]`,
+        })),
+        { value: "cancel", label: "Cancel" },
+      ],
+    });
+
+    if (isCancel(resumeChoice) || resumeChoice === "cancel") return;
+
+    if (resumeChoice !== "fresh") {
+      resumeSessionId = resumeChoice as string;
+      const stored = sm.loadSession(resumeSessionId);
+      if (stored) {
+        goalText = stored.data.goal;
+        console.log(chalk.gray(`Resuming session: ${stored.data.name} (${stored.data.id})`));
+      }
+    }
+  }
+
+  if (!resumeSessionId) {
+    const goalInput = await text({
+      message: "What is your goal?",
+      placeholder: "e.g. Create a test file for ActionTracker",
+    });
+
+    if (isCancel(goalInput) || !(goalInput as string).trim()) {
+      console.log(chalk.yellow("No goal provided. Exiting."));
+      return;
+    }
+    goalText = goalInput as string;
   }
 
   let config;
@@ -411,7 +542,7 @@ export async function runAgentMode(): Promise<void> {
   const s = spinner();
   s.start("Decomposing goal into specialized swarm tasks...");
   
-  const result = await coordinator.runSwarm(goal.trim(), (msg) => {
+  const result = await coordinator.runSwarm(goalText.trim(), (msg) => {
     s.message(msg);
   });
 

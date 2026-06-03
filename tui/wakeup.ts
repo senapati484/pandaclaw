@@ -38,8 +38,9 @@ export async function runWakeup () {
     const mode = await select({
         message: "Which mode do you want to start with?",
         options: [
-            { value: "cli", label: "Cli" },
-            { value: "telegram", label: "Telegram" },
+            { value: "cli", label: "CLI — Ask / Plan / Agent modes" },
+            { value: "web", label: "Web Dashboard — (http://localhost:18789)" },
+            { value: "telegram", label: "Telegram Bot" },
             { value: "exit", label: "Exit" },
         ],
     });
@@ -52,8 +53,10 @@ export async function runWakeup () {
     if (mode === "cli") {
         await acquireLock();
         await runCli();
+    } else if (mode === "web") {
+        const { server } = await import("../canvas/server.js");
+        await new Promise<never>(() => {});
     } else if (mode === "telegram") {
-        // Kill any old instance and take the lock before starting Telegram
         await acquireLock();
         const { Gateway } = await import("../modes/gateway/index.js");
         const gateway = new Gateway();

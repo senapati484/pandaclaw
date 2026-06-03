@@ -109,10 +109,11 @@ if [ ! -f "$GLOBAL_CONFIG_PATH" ]; then
 fi
 
 echo -e "\n${GREEN}🎉 PandaClaw has been installed successfully! 🎉${NC}"
-echo -e "To configure your LLM provider API keys, run:"
-echo -e "  ${PURPLE}pandaclaw setup${NC}"
-echo ""
-echo -e "To launch PandaClaw, run:"
-echo -e "  ${PURPLE}pandaclaw${NC}"
-echo ""
+echo -e ""
+echo -e "${CYAN}Quick start:${NC}"
+echo -e "  ${PURPLE}pandaclaw setup${NC}        — Configure API keys"
+echo -e "  ${PURPLE}pandaclaw ask${NC}           — Ask questions, edit files, run commands"
+echo -e "  ${PURPLE}pandaclaw dashboard${NC}     — Open the web UI (port 18789)"
+echo -e "  ${PURPLE}pandaclaw${NC}               — Launch the welcome menu"
+echo -e ""
 echo -e "${CYAN}Happy pair programming! 🐼${NC}\n"

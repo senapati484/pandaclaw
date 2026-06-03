@@ -23,30 +23,12 @@ interface RawPlan {
 }
 
 function buildPrompt(goal: string): string {
-  return `You are PandaClaw's planning engine.
-
-Break this goal into clear, ordered implementation steps:
+  return `Break goal into ordered implementation steps:
 "${goal}"
-
-Each step must be specific and actionable.
-If a step needs a tool, specify it in the "tool" field.
 
 Available tools: web_search, web_fetch, file_read, file_write, code_exec, shell_command
 
-Reply ONLY with valid JSON (no markdown, no explanation):
-{
-  "steps": [
-    {
-      "index": 0,
-      "title": "Short step name",
-      "description": "What specifically to do in this step",
-      "tool": "tool_name or null",
-      "toolArgs": {} or null,
-      "dependsOn": []
-    }
-  ],
-  "estimatedComplexity": "low|medium|high"
-}`;
+Reply ONLY JSON: {"steps":[{"index":0,"title":"...","description":"...","tool":"...|null","toolArgs":{}|null,"dependsOn":[]}],"estimatedComplexity":"low|medium|high"}`;
 }
 
 function offlinePlan(goal: string): Plan {

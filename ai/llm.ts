@@ -1,7 +1,14 @@
-// ai/llm.ts
-
 import type { PandaConfig } from "./ai.config.js";
 import chalk from "chalk";
+import { globalRegistry } from "./providers/adapter.js";
+import type { LLMMessage } from "./providers/adapter.js";
+import { GroqAdapter } from "./providers/groq-adapter.js";
+import { OpenRouterAdapter } from "./providers/openrouter-adapter.js";
+import { OllamaAdapter } from "./providers/ollama-adapter.js";
+import { NvidiaAdapter } from "./providers/nvidia-adapter.js";
+import { streamCompletion } from "./providers/stream-adapter.js";
+import type { StreamChunk } from "./providers/stream-adapter.js";
+import { getCache } from "./response-cache.js";
 
 export interface LLMCallOptions {
   messages: any[];
@@ -9,301 +16,260 @@ export interface LLMCallOptions {
   tool_choice?: string;
   temperature?: number;
   max_tokens?: number;
+  stream?: boolean;
+  onChunk?: (chunk: StreamChunk) => void;
+  useCache?: boolean;
 }
 
-/** Sentinel error for HTTP 429 — bypasses retry logic to immediately trigger provider fallback */
-class RateLimitError extends Error {
-  constructor(url: string, retryAfterSec: number) {
-    super(
-      `Rate limit (429) on ${url}${retryAfterSec > 0 ? ` (retry-after: ${retryAfterSec}s)` : ""}. Skipping to next provider.`
+export function initProviders(config: PandaConfig): void {
+  globalRegistry.clear();
+
+  // Register available providers
+  const providers = config.providers;
+
+  if (providers.groq?.api_key) {
+    globalRegistry.register(
+      new GroqAdapter(providers.groq.api_key, providers.groq.api_base)
     );
-    this.name = "RateLimitError";
   }
-}
 
-export async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  maxRetries = 3
-): Promise<Response> {
-  let attempt = 0;
-  while (attempt < maxRetries) {
-    try {
-      const res = await fetch(url, options);
-      if (res.status === 429) {
-        // Throw sentinel immediately — do NOT retry 429s, let provider fallback handle it
-        const retryAfterHeader = res.headers.get("retry-after");
-        const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : 0;
-        throw new RateLimitError(url, retryAfterSec);
-      }
-      return res;
-    } catch (err: any) {
-      // RateLimitError and AbortError propagate immediately — no retries
-      if (err.name === "RateLimitError" || err.name === "AbortError") {
-        throw err;
-      }
-      attempt++;
-      if (attempt >= maxRetries) throw err;
-      const delayMs = 1500 * Math.pow(2, attempt - 1);
-      console.warn(
-        chalk.yellow(
-          `\n⚠️ Network/API error on ${url}: ${err.message}. Retrying in ${delayMs}ms...\n`
-        )
-      );
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+  if (providers.openrouter?.api_key) {
+    globalRegistry.register(
+      new OpenRouterAdapter(providers.openrouter.api_key, providers.openrouter.api_base)
+    );
   }
-  throw new Error("Max retries reached");
+
+  if (providers.nvidia_nim?.api_key) {
+    globalRegistry.register(
+      new NvidiaAdapter(providers.nvidia_nim.api_key, providers.nvidia_nim.api_base)
+    );
+  }
+
+  if (providers.ollama?.api_base) {
+    globalRegistry.register(
+      new OllamaAdapter(providers.ollama.api_base)
+    );
+  }
+
+  // Set fallback order from config
+  if (config.routing.fallback_chain) {
+    globalRegistry.setFallbackOrder(config.routing.fallback_chain);
+  }
 }
 
 /**
- * Robust LLM completion call with automatic provider fallback and Groq tool-calling bug patching
+ * Resolve provider config (apiBase, apiKey, model) from PandaConfig by provider name.
  */
-export async function callLLM(config: PandaConfig, options: LLMCallOptions): Promise<any> {
-  const preferredProvider = config.routing.fast_path.provider || "groq";
-  const fallbackChain = config.routing.fallback_chain || ["groq", "openrouter", "nvidia_nim"];
+function resolveProviderConfig(config: PandaConfig, providerName: string): { apiBase: string; apiKey: string; model: string } | null {
+  const p = config.providers as Record<string, { api_key?: string; api_base?: string } | undefined>;
+  const prov = p[providerName];
+  if (!prov?.api_key && !prov?.api_base) return null;
 
-  // Create a unique list of providers to try, beginning with the preferred one
-  const providersToTry = [preferredProvider, ...fallbackChain.filter(p => p !== preferredProvider)];
+  // Pick the first routing entry that uses this provider to get a model name
+  const routing = config.routing as Record<string, { provider?: string; model?: string }>;
+  let model = "";
+  for (const key of Object.keys(routing)) {
+    const entry = routing[key];
+    if (entry?.provider === providerName && entry?.model) {
+      model = entry.model;
+      break;
+    }
+  }
+
+  return {
+    apiBase: prov.api_base || "",
+    apiKey: prov.api_key || "",
+    model,
+  };
+}
+
+/**
+ * Resolve the preferred provider for the fast path.
+ */
+function resolvePreferredProvider(config: PandaConfig): string {
+  return config.routing.fast_path.provider || "groq";
+}
+
+/**
+ * Build a cache key from messages — system prompt + last user message.
+ */
+function buildCachePrompt(messages: any[]): string {
+  const parts: string[] = [];
+  for (const msg of messages) {
+    if (msg.role === "system" || msg.role === "user") {
+      parts.push(`${msg.role}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`);
+    }
+  }
+  return parts.join("\n");
+}
+
+export async function callLLM(config: PandaConfig, options: LLMCallOptions): Promise<any> {
+  // Initialize providers on first call if needed
+  if (globalRegistry.getAllAvailable().length === 0) {
+    initProviders(config);
+  }
+
+  const preferredProvider = resolvePreferredProvider(config);
+  const chain = globalRegistry.getFallbackChain(preferredProvider);
+
+  if (chain.length === 0) {
+    throw new Error("No LLM providers available. Check your API keys in config.json.");
+  }
 
   let lastError: Error | null = null;
 
-  for (const providerName of providersToTry) {
-    const provider = config.providers[providerName as keyof typeof config.providers];
-    if (!provider || !provider.api_key) {
-      continue;
-    }
-
-    // Determine model — use per-provider routing config when available, then sensible defaults
-    let model = config.routing.fast_path.model;
-    let extraHeaders: Record<string, string> = {};
-
-    if (providerName === "groq") {
-      model = config.routing.fast_path.provider === "groq"
-        ? config.routing.fast_path.model
-        : "llama-3.3-70b-versatile";
-    } else if (providerName === "openrouter") {
-      // Gemma 4 26B MoE: ultra-fast (only 3.8B active params), 262K ctx, verified free
-      model = config.routing.panda_mode?.model ?? "google/gemma-4-26b-a4b-it:free";
-      extraHeaders = {
-        "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-        "X-Title": "PandaClaw",
+  // Response cache lookup
+  if (options.useCache !== false) {
+    const cache = getCache();
+    const cachePrompt = buildCachePrompt(options.messages);
+    const cacheModel = resolveProviderConfig(config, preferredProvider)?.model || "";
+    const cached = cache.lookup(cachePrompt, cacheModel);
+    if (cached && cached.hit) {
+      if (options.onChunk) {
+        options.onChunk({ type: "text", content: cached.response });
+        options.onChunk({ type: "done" });
+      }
+      return {
+        choices: [{ message: { role: "assistant", content: cached.response } }],
+        model: cacheModel,
+        cached: true,
       };
-    } else if (providerName === "nvidia_nim") {
-      // Use the chat model, not the vision model
-      model = "meta/llama-3.1-70b-instruct";
-    } else if (providerName === "ollama") {
-      model = "qwen3:0.6b";
+    }
+  }
+
+  // Streaming path
+  if (options.stream && options.onChunk) {
+    for (const provider of chain) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+      const provConfig = resolveProviderConfig(config, provider.name);
+      if (!provConfig || !provConfig.apiKey || !provConfig.apiBase) {
+        clearTimeout(timeoutId);
+        continue;
+      }
+
+      try {
+        let fullContent = "";
+        const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+
+        await streamCompletion(
+          provConfig.apiBase.replace(/\/+$/, ""),
+          provConfig.apiKey,
+          provConfig.model,
+          options.messages,
+          (chunk) => {
+            if (chunk.type === "text" && chunk.content) {
+              fullContent += chunk.content;
+            }
+            if (chunk.type === "tool_call" && chunk.toolName) {
+              toolCalls.push({
+                id: chunk.toolCallId || "call_" + Math.random().toString(36).substring(2, 11),
+                type: "function",
+                function: {
+                  name: chunk.toolName,
+                  arguments: chunk.toolArgs || "{}",
+                },
+              });
+            }
+            options.onChunk?.(chunk);
+          },
+          {
+            tools: options.tools as any,
+            temperature: options.temperature,
+            max_tokens: options.max_tokens,
+            signal: controller.signal,
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        const streamResponse = {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: fullContent || null,
+                tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+              },
+            },
+          ],
+          model: provConfig.model,
+        };
+
+        // Cache the response
+        if (options.useCache !== false && fullContent) {
+          const cache = getCache();
+          cache.store(buildCachePrompt(options.messages), fullContent, provConfig.model);
+        }
+
+        return streamResponse;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const isTimeout = err.name === "AbortError";
+        lastError = isTimeout ? new Error(`${provider.name} timed out`) : err;
+        console.warn(
+          chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${(err.message || "")?.slice(0, 120)}. Trying next provider...\n`)
+        );
+      }
     }
 
+    throw lastError || new Error("All LLM providers in fallback chain failed.");
+  }
+
+  // Non-streaming path
+  for (const provider of chain) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
     try {
-      const res = await fetchWithRetry(`${provider.api_base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${provider.api_key}`,
-          ...extraHeaders,
-        },
-        body: JSON.stringify({
-          model,
-          messages: sanitizeMessages(options.messages),
-          tools: options.tools,
-          tool_choice: options.tool_choice,
-          temperature: options.temperature ?? 0.1,
-          max_tokens: options.max_tokens,
-        }),
+      const result = await provider.complete({
+        messages: options.messages as LLMMessage[],
+        tools: options.tools,
+        tool_choice: options.tool_choice as any,
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      if (!res.ok) {
-        const errText = await res.text();
-        
-        // Handle Groq's tool-calling parser bug (400 Bad Request with tool_use_failed)
-        if (providerName === "groq" && res.status === 400) {
-          try {
-            const errJson = JSON.parse(errText);
-            if (errJson?.error?.code === "tool_use_failed" && errJson?.error?.failed_generation) {
-              const fakeData = patchGroqToolCall(errJson.error.failed_generation);
-              if (fakeData) {
-                return fakeData;
-              }
-            }
-          } catch {}
-        }
+      const nonStreamResponse = {
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: result.content,
+              tool_calls: result.tool_calls,
+            },
+          },
+        ],
+        usage: result.usage,
+        model: result.model,
+      };
 
-        throw new Error(`Provider ${providerName} returned status ${res.status}: ${errText}`);
+      // Cache the response
+      if (options.useCache !== false && result.content) {
+        const cache = getCache();
+        cache.store(buildCachePrompt(options.messages), result.content, result.model);
       }
 
-      const data = (await res.json()) as any;
-      const msg = data.choices?.[0]?.message;
-
-      // Handle Groq's tool-calling bug where it returns 200 OK but outputs XML tags in content instead of tool_calls
-      if (providerName === "groq" && msg?.content && (!msg.tool_calls || msg.tool_calls.length === 0)) {
-        const parsed = parseTextToolCall(msg.content);
-        if (parsed) {
-          data.choices[0].message = {
-            role: "assistant",
-            tool_calls: [
-              {
-                id: "call_" + Math.random().toString(36).substring(2, 11),
-                type: "function",
-                function: parsed
-              }
-            ]
-          };
-        }
-      }
-
-      return data;
+      return nonStreamResponse;
     } catch (err: any) {
       clearTimeout(timeoutId);
       const isTimeout = err.name === "AbortError";
       const errMsg = isTimeout ? "Request timed out after 15s" : err.message;
-      lastError = isTimeout ? new Error(`${providerName} timed out after 15s`) : err;
-      console.warn(chalk.yellow(`\n⚡ [callLLM] ${providerName} failed: ${errMsg?.slice(0, 120)}. Trying next provider...\n`));
+      lastError = isTimeout ? new Error(`${provider.name} timed out`) : err;
+      console.warn(
+        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg?.slice(0, 120)}. Trying next provider...\n`)
+      );
     }
   }
 
   throw lastError || new Error("All LLM providers in fallback chain failed.");
 }
 
-export function sanitizeMessages(messages: any[]): any[] {
-  return messages.map((m) => {
-    const clean: any = {
-      role: m.role,
-    };
-
-    if (m.role === "assistant") {
-      if (m.tool_calls && m.tool_calls.length > 0) {
-        clean.content = m.content || null;
-        clean.tool_calls = m.tool_calls.map((tc: any) => ({
-          id: tc.id,
-          type: tc.type || "function",
-          function: {
-            name: tc.function.name,
-            arguments: tc.function.arguments,
-          },
-        }));
-      } else {
-        // Assistant message without tool calls MUST have string content (cannot be null)
-        clean.content = m.content ?? "";
-      }
-    } else if (m.role === "tool") {
-      clean.content = m.content ?? "";
-      clean.tool_call_id = m.tool_call_id;
-    } else {
-      // user, system
-      clean.content = m.content ?? "";
-    }
-
-    if (m.name !== undefined) clean.name = m.name;
-    return clean;
-  });
-}
-
-/**
- * Patch helper to reconstruct Groq's failed generation into a valid completions choice payload
- */
-function patchGroqToolCall(failedGeneration: string): any | null {
-  const match = failedGeneration.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) || failedGeneration.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
-  if (!match || !match[1] || !match[2]) return null;
-
-  const toolName = match[1];
-  let toolArgs = match[2].trim();
-
-  // Clean trailing tags or comments if present
-  if (toolArgs.includes("</function>")) {
-    toolArgs = toolArgs.substring(0, toolArgs.indexOf("</function>")).trim();
-  }
-  if (toolArgs.startsWith("```")) {
-    toolArgs = toolArgs.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
-  }
-
-  try {
-    JSON.parse(toolArgs);
-    return createFakeCompletionsPayload(toolName, toolArgs);
-  } catch {
-    // Try to extract JSON
-    const start = toolArgs.indexOf("{");
-    const end = toolArgs.lastIndexOf("}");
-    if (start !== -1 && end !== -1) {
-      const clean = toolArgs.substring(start, end + 1);
-      try {
-        JSON.parse(clean);
-        return createFakeCompletionsPayload(toolName, clean);
-      } catch {}
-    }
-  }
-
-  return null;
-}
-
-/**
- * Parse XML-like tool call embedded in a 200 OK assistant text response
- */
-function parseTextToolCall(content: string): { name: string; arguments: string } | null {
-  const match = content.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) || content.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
-  if (!match || !match[1] || !match[2]) return null;
-
-  const toolName = match[1];
-  let toolArgs = match[2].trim();
-
-  if (toolArgs.includes("</function>")) {
-    toolArgs = toolArgs.substring(0, toolArgs.indexOf("</function>")).trim();
-  }
-  if (toolArgs.startsWith("```")) {
-    toolArgs = toolArgs.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
-  }
-
-  try {
-    JSON.parse(toolArgs);
-    return { name: toolName, arguments: toolArgs };
-  } catch {
-    const start = toolArgs.indexOf("{");
-    const end = toolArgs.lastIndexOf("}");
-    if (start !== -1 && end !== -1) {
-      const clean = toolArgs.substring(start, end + 1);
-      try {
-        JSON.parse(clean);
-        return { name: toolName, arguments: clean };
-      } catch {}
-    }
-  }
-
-  return null;
-}
-
-function createFakeCompletionsPayload(toolName: string, toolArgs: string): any {
-  return {
-    choices: [
-      {
-        message: {
-          role: "assistant",
-          tool_calls: [
-            {
-              id: "call_" + Math.random().toString(36).substring(2, 11),
-              type: "function",
-              function: {
-                name: toolName,
-                arguments: toolArgs
-              }
-            }
-          ]
-        }
-      }
-    ]
-  };
-}
-
-/**
- * Transcribe an audio recording using Groq's Whisper API.
- * High-performance, low latency voice-to-text.
- */
+/** Transcribe audio using Groq's Whisper API */
 export async function transcribeAudio(
   audioBuffer: Buffer,
   mimeType: string,

@@ -24,12 +24,6 @@
       "temperature": 0.1,
       "maxTokens": 2048
     },
-    "groq_heavy": {
-      "provider": "groq",
-      "model": "llama-3.3-70b-versatile",
-      "temperature": 0.1,
-      "maxTokens": 4096
-    },
     "panda_mode": {
       "provider": "openrouter",
       "model": "qwen/qwen3-coder:free",
@@ -41,34 +35,6 @@
       "model": "qwen/qwen3-next-80b-a3b-instruct:free",
       "temperature": 0.2,
       "maxTokens": 4096
-    },
-    "vision_screenshot": {
-      "provider": "nvidia_nim",
-      "model": "meta/llama-3.2-11b-vision-instruct"
-    },
-    "vision_document": {
-      "provider": "nvidia_nim",
-      "model": "microsoft/phi-3.5-vision-128k-instruct"
-    },
-    "vision_chart": {
-      "provider": "nvidia_nim",
-      "model": "meta/llama-3.2-90b-vision-instruct"
-    },
-    "vision_code": {
-      "provider": "nvidia_nim",
-      "model": "meta/llama-3.2-11b-vision-instruct"
-    },
-    "nvidia_nim_fast": {
-      "provider": "nvidia_nim",
-      "model": "meta/llama-3.1-70b-instruct",
-      "temperature": 0.1,
-      "maxTokens": 2048
-    },
-    "nvidia_nim_reason": {
-      "provider": "nvidia_nim",
-      "model": "nvidia/llama-3.1-nemotron-70b-instruct",
-      "temperature": 0.1,
-      "maxTokens": 8192
     },
     "fallback_chain": [
       "groq",

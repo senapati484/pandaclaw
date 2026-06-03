@@ -53,10 +53,10 @@ export async function runSetup(): Promise<void> {
   config.providers.nvidia_nim = config.providers.nvidia_nim || { api_key: "", api_base: "https://integrate.api.nvidia.com/v1" };
 
   config.routing = config.routing || {};
-  config.routing.fast_path = config.routing.fast_path || { provider: "groq", model: "llama-3.3-70b-versatile", temperature: 0.1, maxTokens: 2048 };
-  config.routing.panda_mode = config.routing.panda_mode || { provider: "openrouter", model: "deepseek/deepseek-r1", temperature: 0.1, maxTokens: 8192 };
-  config.routing.planning = config.routing.planning || { provider: "openrouter", model: "deepseek/deepseek-chat", temperature: 0.2, maxTokens: 4096 };
-  config.routing.fallback_chain = config.routing.fallback_chain || ["groq", "openrouter", "nvidia_nim"];
+  config.routing.fast_path = config.routing.fast_path || { provider: "groq", model: "llama-3.1-8b-instant", temperature: 0.1, maxTokens: 2048 };
+  config.routing.panda_mode = config.routing.panda_mode || { provider: "openrouter", model: "qwen/qwen3-coder:free", temperature: 0.1, maxTokens: 8192 };
+  config.routing.planning = config.routing.planning || { provider: "openrouter", model: "qwen/qwen3-next-80b-a3b-instruct:free", temperature: 0.2, maxTokens: 4096 };
+  config.routing.fallback_chain = config.routing.fallback_chain || ["groq", "openrouter", "nvidia_nim", "ollama"];
 
   config.tools = config.tools || {};
   config.tools.web_search = config.tools.web_search || { provider: "tavily", api_key: "", fallback: "duckduckgo", maxResults: 5 };
@@ -112,9 +112,8 @@ export async function runSetup(): Promise<void> {
   });
   if (typeof fastProvider === "string") {
     config.routing.fast_path.provider = fastProvider;
-    // Auto-update model defaults if using Groq/OpenRouter
     if (fastProvider === "groq") {
-      config.routing.fast_path.model = "llama-3.3-70b-versatile";
+      config.routing.fast_path.model = "llama-3.1-8b-instant";
     } else if (fastProvider === "openrouter") {
       config.routing.fast_path.model = "openrouter/free";
     }

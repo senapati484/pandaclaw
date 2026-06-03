@@ -29,7 +29,7 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
 
 ---
 
-## 🚀 PandaClaw v3 Core Architecture
+## 🚀 Core Architecture
 
 ### 🔒 1. Sandboxing & Git-Backed Rollbacks
 *   **Git-Backed Transactions**: All file system mutations run on a temporary git branch (`pandaclaw-tx-<uuid>`). If validation fails or you decline the changes, the workspace is rolled back to its clean commit state instantly.
@@ -89,34 +89,58 @@ Unlike traditional agents that act instantly, PandaClaw operates with strict pla
 
 ```
 pandaclaw/
-├── index.ts                    # CLI Entrypoint (Commander)
-├── config.json                 # Gateway & API Keys Config (Shared)
+├── index.ts                    # CLI Entrypoint (Commander, direct ask/agent/plan)
+├── config.json                 # Provider, routing, tools, memory, agent config
 ├── ai/
 │   ├── ai.config.ts            # Config Parser with Env Overrides
+│   ├── config-schema.ts        # Zod validation schema for full config
+│   ├── llm.ts                  # Unified callLLM w/ streaming + response cache
 │   ├── context-compressor.ts   # Minification, Slicing & JSON Compression
+│   ├── response-cache.ts       # TF-IDF semantic cache (0.92 threshold)
 │   └── providers/
-│       ├── nvidia-nim.ts       # NIM Vision Models
-│       └── r1-compiler.ts      # DeepSeek R1 Parsing & Verifier
+│       ├── adapter.ts          # ProviderAdapter interface + ProviderRegistry
+│       ├── llm-utils.ts        # Shared makeCompletionRequest() for all adapters
+│       ├── groq-adapter.ts     # Groq provider adapter
+│       ├── openrouter-adapter.ts  # OpenRouter provider adapter
+│       ├── nvidia-adapter.ts   # Nvidia NIM provider adapter
+│       ├── ollama-adapter.ts   # Ollama provider adapter
+│       └── stream-adapter.ts   # SSE streaming adapter
 ├── sandbox/                    # Bun-Native Process Sandbox
 ├── fs/                         # Transactional Git File System
 ├── memory/
 │   ├── store.ts                # Persistent Chats, Graph and Active Pruner
 │   └── consolidator.ts         # Triplet Relationship Summarizer
 ├── modes/
-│   ├── cli.ts                  # Interactive CLI Sub-modes
+│   ├── cli.ts                  # Interactive CLI Sub-modes (ask/agent/plan)
+│   ├── ask/
+│   │   ├── orchestrator.ts     # Ask mode orchestrator (fast/complex/action routing)
+│   │   ├── tool-agent.ts       # Tool-calling agent for "action" route
+│   │   ├── fast-path.ts        # Simple LLM call for "simple" route
+│   │   └── panda-mode.ts       # Multi-step reasoning for "complex" route
 │   ├── agent/
-│   │   ├── orchestrator.ts     # Reactor Loop Orchestrator
+│   │   ├── orchestrator.ts     # Reactor Loop Orchestrator (undo/redo, formatting, session save)
+│   │   ├── session-manager.ts  # Persistent multi-session CRUD under .pandaclaw/sessions/
+│   │   ├── action-history.ts   # Undo/redo with content snapshots
+│   │   ├── action-tracker.ts   # Action tracking with import() for session restore
+│   │   ├── test-runner.ts      # Auto-detects test runners (bun, jest, vitest, etc.)
+│   │   ├── types.ts            # Shared types (MutationPlan, ValidationResult, etc.)
 │   │   └── swarm/              # Swarm Coordinator & Worker Dispatchers
-│   ├── plan/                   # Strategic Planner Mode
-│   ├── ask/                    # Codebase-Aware Conversation Mode
-│   └── gateway/                # Unified Channel Gateway & Pluggable Adapters
-├── canvas/                     # Local Canvas Web Dashboard Server
+│   ├── plan/                   # Strategic Planner Mode (goal → plan → per-step approval)
+│   └── gateway/                # Unified Channel Gateway & Plugable Adapters
+├── canvas/                     # Local Canvas Web Dashboard Server (port 18789)
 ├── vision/                     # 4-stage Vision Pipeline (Perceive → Locate → Reason → Act)
 ├── tools/                      # Safe/Risky Tool Registry (Tavily Search, Web Fetch, macOS Alarms, Dynamic Skills)
+│   ├── code-formatter.ts       # Auto-detects formatters (Biome, dprint, Prettier, ESLint)
+│   ├── diff-preview.ts         # Change preview utilities
+│   ├── file-mentions.ts        # File reference tracking
 │   ├── dynamic-loader.ts       # Recursive directory skill loader
 │   └── canvas-tools.ts         # Visual canvas control interface
+├── types/
+│   └── shared.ts               # Shared type definitions (LearnedConstraint, RiskLevel)
+├── utils/
+│   └── logger.ts               # Structured logger with emoji/level/context
 ├── skills/                     # Workspace folder for pluggable user skills
-└── tests/                      # Suite of 39 Unit Tests (Swarm, Compaction, Loaders, Sandbox, Transactions)
+└── tests/                      # Suite of 93 Unit Tests (config, providers, sessions, swarm, etc.)
 ```
 
 ---
@@ -193,12 +217,6 @@ You can also create or edit `config.json` manually:
       "temperature": 0.1,
       "maxTokens": 2048
     },
-    "groq_heavy": {
-      "provider": "groq",
-      "model": "llama-3.3-70b-versatile",
-      "temperature": 0.1,
-      "maxTokens": 4096
-    },
     "panda_mode": {
       "provider": "openrouter",
       "model": "qwen/qwen3-coder:free",
@@ -221,24 +239,30 @@ You can also create or edit `config.json` manually:
 }
 ```
 
-*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`) will override `config.json` settings. No Telegram Token configuration is required! PandaClaw has a shared default bot token built directly into the codebase. You can immediately message [@pandaclawbot](https://t.me/pandaclawbot) on Telegram and securely pair your device without any manual BotFather setup.*
+*Note: Environment variables (e.g. `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`) override `config.json` settings. No Telegram setup required — message [@pandaclawbot](https://t.me/pandaclawbot) to pair your device.*
 
 ---
 
 ## 🎮 Usage
 
-### 1. Launch CLI Wakeup menu
+PandaClaw offers several modes via direct CLI commands:
+
 ```bash
-pandaclaw wakeup
-# or
-bun run dev
+pandaclaw ask         # Quick answers, file ops, and shell commands
+pandaclaw agent       # Autonomous swarm for complex multi-step goals
+pandaclaw plan        # Goal → plan → execute with per-step approval
+pandaclaw dashboard   # Start the Visual Canvas Web Dashboard (port 18789)
+pandaclaw setup       # Configure API keys and providers interactively
+pandaclaw sessions    # List, switch, or manage agent sessions
+pandaclaw wakeup      # Launch the interactive welcome menu
 ```
 
-### 2. Start Visual Canvas Dashboard
+Or use npm scripts:
 ```bash
-bun run dashboard
+bun run start         # Launch CLI (alias for `pandaclaw`)
+bun run dashboard     # Start web dashboard
+bun run setup         # Configure providers interactive
 ```
-Open `http://localhost:18789` in your browser to view the interactive control center.
 
 ---
 
@@ -285,7 +309,7 @@ PandaClaw operates with safe defaults:
 ---
 
 ## 🐼 Bamboo
-PandaClaw was built for **Bamboo**, a space panda AI assistant who likes leaves, logs, and logical reasoning. 🍃
+PandaClaw was built for **Bamboo** — a space-faring panda who loves leaves, logs, and logical reasoning. 🍃🐼
 
 ---
 

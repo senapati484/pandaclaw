@@ -12,7 +12,7 @@ coverage
 
 # logs
 logs
-_.log
+*.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
@@ -46,3 +46,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .pandaclaw/graph_memory.json
 .pandaclaw/chats.jsonl
 .pandaclaw/pandaclaw.pid
+.pandaclaw/events.jsonl
+.pandaclaw/response-cache.json
+.pandaclaw/sessions/

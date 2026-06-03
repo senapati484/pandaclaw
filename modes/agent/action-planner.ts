@@ -89,19 +89,7 @@ interface MutationProposal {
   rationale: string; // brief explanation of why this mutation is needed
   estimatedRisk: "low" | "medium" | "high";
   requiresApproval: boolean; // true for high risk or critical actions
-}
-
-Example response:
-[
-  {
-    "type": "file_create",
-    "path": "testing.txt",
-    "content": "Hello World from PandaClaw!",
-    "rationale": "Create the requested testing.txt file with custom text",
-    "estimatedRisk": "low",
-    "requiresApproval": false
-  }
-]`;
+}`;
 
     try {
       const responseText = await modelSelector.generateText("planning", prompt);

@@ -89,11 +89,12 @@ if (!(Test-Path $globalConfigPath)) {
 
 Write-Host ""
 Write-Host "🎉 PandaClaw has been installed successfully! 🎉" -ForegroundColor Green
-Write-Host "To configure your LLM provider API keys, run:"
-Write-Host "  pandaclaw setup" -ForegroundColor Purple
 Write-Host ""
-Write-Host "To launch PandaClaw, run:"
-Write-Host "  pandaclaw" -ForegroundColor Purple
+Write-Host "Quick start:" -ForegroundColor Cyan
+Write-Host "  pandaclaw setup        — Configure API keys" -ForegroundColor Purple
+Write-Host "  pandaclaw ask           — Ask questions, edit files, run commands" -ForegroundColor Purple
+Write-Host "  pandaclaw dashboard     — Open the web UI (port 18789)" -ForegroundColor Purple
+Write-Host "  pandaclaw               — Launch the welcome menu" -ForegroundColor Purple
 Write-Host ""
 Write-Host "Happy pair programming! 🐼" -ForegroundColor Cyan
 Write-Host ""

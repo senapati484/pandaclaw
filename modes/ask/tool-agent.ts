@@ -18,7 +18,7 @@ import {
   recallRelevantRelations,
   pruneAndCompactChats
 } from "../../memory/store.js";
-import { sanitizeMessages, fetchWithRetry } from "../../ai/llm.js";
+import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
 
 export interface ToolAgentResult {
   answer: string;
@@ -288,44 +288,6 @@ Your tools:
   8. To open YouTube's latest video: use app_control app='youtube' action='resolve_latest' FIRST, then open the URL with app='chrome'.
   9. For system controls (volume, brightness, VS Code, Ollama): use app_control with app='system'.
   10. For browser tab control (scroll, navigate, switch): use app_control with app='browser_action'.
-
-══════════════════════════════════════════════════
-🧑‍💻  CODE GENERATION PROTOCOL — ALWAYS FOLLOW THIS:
-══════════════════════════════════════════════════
-
-When you write ANY code file (Python, Shell, TypeScript, JavaScript, etc.), you MUST follow ALL of these rules — no exceptions:
-
-📁 PATHS — Never hardcode. Always use dynamic values:
-  - Python : use os.path.expanduser("~"), os.path.join(...), pathlib.Path.home()
-  - Shell  : use "$HOME", "$USER", "$(pwd)"
-  - Node   : use os.homedir(), process.cwd(), path.join(...)
-  - The Desktop on this device is: ${desktop}
-
-🛡 ROBUSTNESS — All generated code must be production-quality:
-  - Python  : wrap ALL IO/network calls in try/except, handle specific exceptions not bare except
-  - Shell   : start every .sh script with "set -euo pipefail" so it fails fast on any error
-  - Node/Bun: use try/catch for async calls; never leave unhandled promise rejections
-  - Always add a shebang line: "#!/usr/bin/env python3" (Python), "#!/usr/bin/env bash" (Shell)
-
-📺 INTERACTIVE INPUT — stdin is NOT a TTY inside code_exec:
-  - If a script uses input() (Python) or readline/prompt (Node), it WILL crash with EOFError
-  - ALWAYS add a non-interactive fallback:
-      Python : check sys.stdin.isatty(); catch EOFError; or use sys.argv for inputs
-      Node   : check process.stdin.isTTY; or use process.argv for inputs
-  - The fallback must run a self-contained demonstration so code_exec can verify the script
-
-📦 DEPENDENCIES — Check before writing:
-  - Before using a third-party Python import: run code_exec "python3 -c 'import <pkg>'" to verify it's installed
-  - If not installed: run code_exec "pip3 install <pkg>" first, THEN write the script
-  - For Node/Bun packages: run code_exec "bun pm ls | grep <pkg>" or "node -e \"require('<pkg>')\""
-
-✅ WRITE → VERIFY → FIX LOOP (mandatory for all code files):
-  STEP 1. file_write the code — check the returned "syntaxCheck" field immediately
-  STEP 2. If syntaxCheck is "SYNTAX ERROR: ..." → file_read to inspect, fix it, file_write again — repeat until "OK"
-  STEP 3. code_exec to RUN the written file — check exitCode
-  STEP 4. If exitCode !== 0 → read the "hint" field in the result, apply the fix, rewrite, re-run
-  STEP 5. Repeat STEP 3–4 up to 3 times
-  STEP 6. Only report "done" to the user AFTER exitCode === 0
 
 ${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
 }

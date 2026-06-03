@@ -1,5 +1,7 @@
+import type { RiskLevel as SharedRiskLevel } from "../../types/shared.js";
+export type RiskLevel = SharedRiskLevel;
+
 export type PlanStatus = "draft" | "validated" | "approved" | "in-progress" | "completed" | "abandoned";
-export type RiskLevel = "low" | "medium" | "high";
 export type TaskType = "analysis" | "create" | "modify" | "delete" | "test" | "review" | "refactor";
 
 export interface Task {
@@ -50,12 +52,8 @@ export interface Plan {
   metadata?: Record<string, unknown>;
 }
 
-export interface LearnedConstraint {
-  type: "forbidden_path" | "allowed_pattern" | "required_format" | "naming_convention";
-  value: string;
-  reason: string;
-  confidence: number;
-}
+import type { LearnedConstraint } from "../../types/shared.js";
+export type { LearnedConstraint };
 
 export interface PlanningPattern {
   name: string;

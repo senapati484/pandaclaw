@@ -1,7 +1,5 @@
 // modes/agent/types.ts
 
-import type { LanguageModel } from "ai";
-
 // ============ Action & Mutation Types ============
 
 export type ActionType =
@@ -92,12 +90,8 @@ export interface CachedFile {
 
 // ============ Session Memory Types ============
 
-export interface LearnedConstraint {
-  type: "forbidden_path" | "allowed_pattern" | "required_format" | "naming_convention";
-  value: string;
-  reason: string;
-  confidence: number; // 0-1
-}
+import type { LearnedConstraint } from "../../types/shared.js";
+export type { LearnedConstraint };
 
 export interface ErrorPattern {
   pattern: string;

@@ -166,4 +166,14 @@ export class ActionTracker {
   export(): ActionLog[] {
     return JSON.parse(JSON.stringify(this.actions));
   }
+
+  /**
+   * Import pre-existing actions (for session restoration)
+   */
+  import(actions: ActionLog[]): void {
+    for (const action of actions) {
+      this.actions.push(action);
+      this.actionIndex.set(action.id, action);
+    }
+  }
 }
