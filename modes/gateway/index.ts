@@ -7,6 +7,7 @@ import { SlackAdapter } from "./adapters/slack.js";
 import { WebChatAdapter } from "./adapters/webchat.js";
 import type { ToolContext } from "../../modes/agent/types.js";
 import { runToolAgent } from "../ask/tool-agent.js";
+import { runPandaMode } from "../ask/panda-mode.js";
 import { classifyRoute } from "../ask/classifier.js";
 import chalk from "chalk";
 
@@ -155,10 +156,23 @@ export class Gateway {
         console.log(chalk.gray(`  Route: ${route}`));
 
         let result;
-        if (route === "action" || route === "complex") {
-          // Both action and complex go to tool agent for now
-          // (tool agent handles both tool use AND reasoning)
+        if (route === "action") {
           result = await runToolAgent(userText, this.config, toolCtx);
+        } else if (route === "complex") {
+          const { runPandaMode } = await import("../ask/panda-mode.js");
+          const task = {
+            id: crypto.randomUUID(),
+            type: "complex" as const,
+            input: userText,
+            conversationHistory: [],
+            createdAt: new Date(),
+          };
+          const pandaResult = await runPandaMode(task, this.config);
+          result = {
+            answer: pandaResult.answer,
+            toolsUsed: [] as string[],
+            durationMs: pandaResult.durationMs,
+          };
         } else {
           // Simple → fast path (Groq direct, no tool loop)
           const { runFastPath } = await import("../ask/fast-path.js");
