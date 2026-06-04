@@ -16,11 +16,7 @@ const FACE  = chalk.hex("#e8dcf8");
 export async function runAskMode(): Promise<void> {
   const config = readConfig();
 
-  console.log(PANDA("\n🐼 Ask Mode — I think before I answer\n"));
-  console.log(FACE("  Simple questions → instant answer (Groq fast-path)"));
-  console.log(FACE("  Hard questions   → panda mode (DeepSeek R1 + verify)"));
-  console.log(FACE("  Action requests  → action mode (Tool Agent + direct execution)\n"));
-  console.log(chalk.gray("  Type 'exit' to return to main menu\n"));
+  console.log(PANDA("\n🐼 Ask Mode\n"));
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -52,13 +48,13 @@ export async function runAskMode(): Promise<void> {
         createdAt: new Date(),
       };
 
-      // Thinking/acting indicator
+      // Thinking indicator — cleared by \x1b[2K\r before answer
       if (route === "complex") {
-        process.stdout.write(PANDA("  🐼 thinking deeply...\r"));
+        process.stdout.write(PANDA("  🐼 thinking\r"));
       } else if (route === "action") {
-        process.stdout.write(PANDA("  🐼 executing actions...\r"));
+        process.stdout.write(PANDA("  🐼 thinking\r"));
       } else {
-        process.stdout.write(chalk.gray("  ⚡ ...\r"));
+        process.stdout.write(chalk.gray("  ⚡\r"));
       }
 
       const start = Date.now();
@@ -69,64 +65,75 @@ export async function runAskMode(): Promise<void> {
       let toolsUsed: string[] = [];
 
       try {
+        // Stream final answer word-by-word for typing effect
+        const streamAnswer = (text: string) => {
+          const words = text.split(" ");
+          let buf = "";
+          for (const w of words) {
+            buf += (buf ? " " : "") + w;
+            if (buf.length >= 80) { process.stdout.write(buf); buf = ""; }
+          }
+          if (buf) process.stdout.write(buf);
+        };
+
         if (route === "action") {
           const { runToolAgent } = await import("./tool-agent.js");
           const toolCtx: ToolContext = {
             userId: "local-cli",
             channel: "cli",
             workspacePath: "/",
-            requestConsent: async () => true, // Pre-authorized in CLI
+            requestConsent: async () => true,
           };
+
           const result = await runToolAgent(trimmed, config, toolCtx);
           answer = result.answer;
           durationMs = result.durationMs;
           provider = "tool-agent";
-          toolsUsed = result.toolsUsed;
-          badgeInfo = result.toolsUsed.length > 0 ? ` · tools: ${result.toolsUsed.join(", ")}` : "";
+          const tools = result.toolsUsed;
+          badgeInfo = tools.length > 0 ? ` · tools: ${tools.join(", ")}` : "";
+
+          process.stdout.write("\x1b[2K\r");
+          console.log();
+          console.log(PANDA(`  🐼 action mode · ${durationMs}ms · ${provider}${badgeInfo}`));
+          console.log();
+          process.stdout.write(FACE("PandaClaw: "));
+          streamAnswer(answer);
+          console.log();
         } else if (route === "complex") {
           const result = await runPandaMode(task, config);
           answer = result.answer;
           durationMs = result.durationMs;
           provider = result.provider;
           badgeInfo = result.verified ? " · verified ✓" : "";
+
+          process.stdout.write("\x1b[2K\r");
+          console.log();
+          console.log(PANDA(`  🐼 panda mode · ${durationMs}ms · ${provider}${badgeInfo}`));
+          console.log();
+          process.stdout.write(FACE("PandaClaw: "));
+          streamAnswer(answer);
+          console.log();
         } else {
           const result = await runFastPath(task, config);
           answer = result.answer;
           durationMs = result.durationMs;
           provider = result.provider;
+
+          process.stdout.write("\x1b[2K\r");
+          console.log();
+          console.log(chalk.gray(`  ⚡ fast · ${durationMs}ms · ${provider}`));
+          console.log();
+          process.stdout.write(FACE("PandaClaw: "));
+          streamAnswer(answer);
+          console.log();
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stdout.write("                          \r");
+        process.stdout.write("\x1b[2K\r");
         console.log(chalk.red(`\n  ❌ Error: ${msg}\n`));
         promptUser();
         return;
       }
-
-      // Clear indicator
-      process.stdout.write("                          \r");
-      console.log();
-
-      // Mode badge
-      if (route === "complex") {
-        console.log(
-          PANDA(
-            `  🐼 panda mode · ${durationMs}ms · ${provider}${badgeInfo}`
-          )
-        );
-      } else if (route === "action") {
-        console.log(
-          PANDA(
-            `  🐼 action mode · ${durationMs}ms · ${provider}${badgeInfo}`
-          )
-        );
-      } else {
-        console.log(chalk.gray(`  ⚡ fast · ${durationMs}ms · ${provider}`));
-      }
-
-      console.log();
-      console.log(FACE("PandaClaw: ") + answer);
-      console.log();
 
       // Update conversation history
       conversationHistory.push({ role: "user", content: trimmed });
@@ -145,6 +152,7 @@ export async function runAskMode(): Promise<void> {
         // Memory save errors are non-fatal
       }
 
+      console.log();
       promptUser();
     });
   };

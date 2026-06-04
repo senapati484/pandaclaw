@@ -28,8 +28,13 @@ const ACTION_PATTERNS = [
   /\b(push|commit|pull|clone|git|repo|github|pr|merge|checkout|status|branch)\b/i,
   // List / browse filesystem
   /\b(list|ls|dir|browse|tree|find|locate|where is)\b.*\b(file|folder|directory|desktop|workspace|codebase|repo)\b/i,
-  // Search web
+  // Search web & knowledge queries
   /\b(search|look up|find on|google|browse|web|internet|duckduckgo|tavily|wikipedia)\b/i,
+  // Knowledge-seeking queries — route to tool agent for web_search
+  /\b(what is|what's|who is|who's|what are|who are|tell me about|do you know|have you heard of|explain|define|describe)\b/i,
+  /\b(what does|how does|how do|where is|when was|why is|why does|how can|what was|what are)\b.*\?/i,
+  // Generic knowledge questions about topics, concepts, definitions
+  /^(what|who|when|where|why|how)\s+(is|are|was|were|does|do|did|can|could|would|will)\s+/i,
   // Memory
   /\b(remember|recall|memory|what did i|do you know|last time|facts|preference)\b/i,
   // System settings, clipboard, and browser control V2/V3

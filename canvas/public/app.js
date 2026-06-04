@@ -87,6 +87,12 @@ const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const chatMessages = document.getElementById("chat-messages");
 
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = chatInput.value.trim();
@@ -99,31 +105,62 @@ chatForm.addEventListener("submit", async (e) => {
   chatMessages.appendChild(userEl);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  const thinkEl = document.createElement("div");
-  thinkEl.className = "message assistant";
-  thinkEl.innerHTML = `<div class="msg-bubble">🐼 <em>Thinking...</em></div>`;
-  chatMessages.appendChild(thinkEl);
+  const assistantEl = document.createElement("div");
+  assistantEl.className = "message assistant";
+  assistantEl.innerHTML = `<div class="msg-bubble">🐼 <strong>PandaClaw:</strong> <span class="streaming-text"></span></div>`;
+  const streamingSpan = assistantEl.querySelector(".streaming-text");
+  chatMessages.appendChild(assistantEl);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
   try {
-    const res = await fetch("/api/message", {
+    const res = await fetch("/api/message/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
-    const data = await res.json();
-    thinkEl.innerHTML = `<div class="msg-bubble">🐼 <strong>PandaClaw:</strong> ${escapeHtml(data.reply)}</div>`;
-  } catch {
-    thinkEl.innerHTML = `<div class="msg-bubble" style="color:var(--danger)">❌ Error sending message</div>`;
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+
+        const data = trimmed.slice(6).trim();
+        if (data === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.t) {
+            fullText += parsed.t;
+            streamingSpan.textContent = fullText;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          } else if (parsed.p) {
+            streamingSpan.textContent = parsed.p + "...";
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+        } catch {}
+      }
+    }
+
+    streamingSpan.innerHTML = escapeHtml(fullText);
+  } catch (err) {
+    assistantEl.innerHTML = `<div class="msg-bubble" style="color:var(--danger)">❌ Error: ${err.message || "Failed to get response"}</div>`;
   }
   chatMessages.scrollTop = chatMessages.scrollHeight;
 });
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
 
 // ── Canvas ─────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById("visual-canvas");

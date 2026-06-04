@@ -36,8 +36,8 @@ test("classifyRoute correctly classifies full-device action queries", () => {
   expect(classifyRoute("scroll down in safari")).toBe("action");
   expect(classifyRoute("type hello world and press enter")).toBe("action");
 
-  // Non-action quick queries should not route to 'action'
-  expect(classifyRoute("What is the capital of France?")).not.toBe("action");
-  expect(classifyRoute("Explain photosynthesis")).not.toBe("action");
+  // Knowledge-seeking queries should route to 'action' for web_search support
+  expect(classifyRoute("What is the capital of France?")).toBe("action");
+  expect(classifyRoute("Explain photosynthesis")).toBe("action");
 });
 

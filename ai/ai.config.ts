@@ -38,7 +38,7 @@ export function readConfig(): PandaConfig {
   const ollamaBase = process.env.OLLAMA_API_BASE || process.env.OLLAMA_BASE_URL;
   if (ollamaBase && rawFile.providers?.ollama) rawFile.providers.ollama.api_base = ollamaBase;
 
-  const tgToken = process.env.TELEGRAM_TOKEN || rawFile.telegram?.token || "8867579185:AAFWNWEwn41jfMyaYGiEauTbCieTmr99GoU";
+  const tgToken = process.env.TELEGRAM_TOKEN || rawFile.telegram?.token || "";
   if (tgToken) {
     rawFile.telegram = {
       token: tgToken,
@@ -51,12 +51,12 @@ export function readConfig(): PandaConfig {
   const ghPemPath        = process.env.GITHUB_PEM_PATH;
   if (ghAppId || ghInstallationId || ghPemPath) {
     rawFile.github = {
-      app_id:          ghAppId          || rawFile.github?.app_id          || "3905611",
-      app_client_id:   rawFile.github?.app_client_id || "Iv23litqPgCUrnfX90U",
+      app_id:          ghAppId          || rawFile.github?.app_id          || "",
+      app_client_id:   rawFile.github?.app_client_id || "",
       installation_id: ghInstallationId || rawFile.github?.installation_id || "",
-      pem_path:        ghPemPath        || rawFile.github?.pem_path        || ".pandaclaw/github-app.pem",
-      bot_name:        rawFile.github?.bot_name  || "pandaclawbot[bot]",
-      bot_email:       rawFile.github?.bot_email || "3905611+pandaclawbot[bot]@users.noreply.github.com",
+      pem_path:        ghPemPath        || rawFile.github?.pem_path        || "",
+      bot_name:        rawFile.github?.bot_name  || "",
+      bot_email:       rawFile.github?.bot_email || "",
     };
   }
 

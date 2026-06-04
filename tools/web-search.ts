@@ -55,8 +55,8 @@ async function searchDuckDuckGoScrape(query: string, maxResults: number): Promis
     $(".result").each((_, elem) => {
       if (results.length >= maxResults) return;
 
-      const title = $(elem).find(".result__snippet").prev().text().trim();
-      let link = $(elem).find(".result__url").attr("href");
+      const title = $(elem).find(".result__title").text().trim() || $(elem).find("h2").text().trim();
+      let link = $(elem).find(".result__url, .result__a").attr("href");
       const snippet = $(elem).find(".result__snippet").text().trim();
 
       if (title && link) {

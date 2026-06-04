@@ -3,7 +3,6 @@
 // All paths are resolved dynamically — no hardcoded usernames or device paths.
 
 import os from "os";
-import path from "path";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";
@@ -26,6 +25,9 @@ export interface ToolAgentResult {
   durationMs: number;
 }
 
+export type ProgressChunk = { type: "progress"; text: string } | { type: "text"; text: string } | { type: "done" };
+export type OnChunk = (chunk: ProgressChunk) => void;
+
 // ── Persistent per-chat conversation history ──────────────────────────────
 const MAX_HISTORY = 10; // Keep last 10 turns per chat in prompt context
 
@@ -43,146 +45,76 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "file_read",
-      description: "Read the contents of ANY file anywhere on the device. Use absolute paths.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Absolute path to the file." },
-        },
-        required: ["path"],
-      },
+      description: "Read any file on the device. Use absolute paths.",
+      parameters: { type: "object", properties: { path: { type: "string", description: "Absolute path" } }, required: ["path"] },
     },
   },
   {
     type: "function",
     function: {
       name: "file_write",
-      description: "Write or create a file ANYWHERE on the device. Creates parent directories automatically. Use absolute paths.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Absolute path to the file to write." },
-          content: { type: "string", description: "Full content to write to the file." },
-        },
-        required: ["path", "content"],
-      },
+      description: "Write or create any file. Creates parent dirs automatically.",
+      parameters: { type: "object", properties: { path: { type: "string", description: "Absolute path" }, content: { type: "string", description: "Full file content" } }, required: ["path", "content"] },
     },
   },
   {
     type: "function",
     function: {
       name: "list_dir",
-      description: "List files and folders at ANY directory on the device.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Absolute path to the directory." },
-          recursive: { type: "boolean", description: "Whether to list recursively (default false)." },
-        },
-        required: [],
-      },
+      description: "List files and folders in a directory.",
+      parameters: { type: "object", properties: { path: { type: "string", description: "Directory path" }, recursive: { type: "boolean", description: "List recursively" } } },
     },
   },
   {
     type: "function",
     function: {
       name: "code_exec",
-      description: "Execute any shell command on the device and return its output. Full system access — use bash commands like ls, cat, mkdir, echo, pwd, python3, bun, etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          code: { type: "string", description: "Shell command to run." },
-          timeout: { type: "number", description: "Timeout in milliseconds (default 30000)." },
-        },
-        required: ["code"],
-      },
+      description: "Execute any shell command on the device.",
+      parameters: { type: "object", properties: { code: { type: "string", description: "Shell command" }, timeout: { type: "number", description: "Timeout ms" } }, required: ["code"] },
     },
   },
   {
     type: "function",
     function: {
       name: "web_search",
-      description: "Search the web and return relevant results.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Search query." },
-        },
-        required: ["query"],
-      },
+      description: "Search the web for current information on any topic.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Search query" } }, required: ["query"] },
     },
   },
   {
     type: "function",
     function: {
       name: "alarm_set",
-      description: "Set an alarm, reminder or notification at a specific time or after a delay. Works on macOS. Use this for 'set alarm for 5pm', 'remind me in 10 minutes', 'alert me at 3:30pm', etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          message: { type: "string", description: "The alarm message or reminder text to display." },
-          time: { type: "string", description: "Time to trigger: either HH:MM (24h, e.g. '17:00') for a specific clock time, or a delay like '10m', '30s', '1h'." },
-        },
-        required: ["message", "time"],
-      },
+      description: "Set an alarm or reminder on macOS.",
+      parameters: { type: "object", properties: { message: { type: "string", description: "Alarm message" }, time: { type: "string", description: "HH:MM or 10m/30s/1h" } }, required: ["message", "time"] },
     },
   },
   {
     type: "function",
     function: {
       name: "memory_recall",
-      description: "Recall past conversations and facts from memory. Use when the user says 'do you remember', 'what did I say', 'last time', etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "What to recall from memory." },
-        },
-        required: ["query"],
-      },
+      description: "Recall past conversations and facts from memory.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "What to recall" } }, required: ["query"] },
     },
   },
   {
     type: "function",
     function: {
       name: "app_control",
-      description: "Control native applications, settings, background services, browsers, and simulated user inputs on the user's macOS device.",
+      description: "Control macOS apps, system settings, browsers, and keyboard input.",
       parameters: {
         type: "object",
         properties: {
-          app: {
-            type: "string",
-            enum: ["chrome", "safari", "youtube", "system", "browser_action", "keyboard"],
-            description: "The application or capability context to trigger."
-          },
-          action: {
-            type: "string",
-            enum: [
-              "open_url", "search", "resolve_latest", 
-              "vscode", "service", "volume", "brightness", "clipboard",
-              "scroll", "navigate", "list_tabs", "switch_tab",
-              "type", "press_key"
-            ],
-            description: "The action to perform."
-          },
-          url: { type: "string", description: "URL to open (required for Chrome/Safari open_url)." },
-          query: { type: "string", description: "Search query (required for Chrome search)." },
-          channel: { type: "string", description: "YouTube channel name to get the latest video for (required for YouTube resolve_latest)." },
-          folder: { type: "string", description: "Folder path (required for system vscode action)." },
-          service: { type: "string", description: "Service name, e.g. 'ollama' (required for system service action)." },
-          state: { type: "string", enum: ["start", "stop"], description: "Service state (required for system service action)." },
-          value: { type: "number", description: "Settings value, percentage 0 to 100 (required for system volume and brightness actions)." },
-          subAction: { type: "string", enum: ["read", "write"], description: "Clipboard action (required for system clipboard action)." },
-          text: { type: "string", description: "Keystroke string or clipboard text (required for keyboard type and clipboard write actions)." },
-          browser: { type: "string", enum: ["chrome", "safari"], description: "Target browser (optional, defaults to 'chrome' for browser_actions)." },
-          direction: { type: "string", enum: ["up", "down", "top", "bottom"], description: "Scroll direction (required for browser_action scroll)." },
-          navigateAction: { type: "string", enum: ["back", "forward", "refresh", "close_tab"], description: "Navigation action (required for browser_action navigate)." },
-          target: { type: "string", description: "Switch tab index or title match segment (required for browser_action switch_tab)." },
-          key: { type: "string", description: "Simulated key name, e.g. 'return', 'tab', 'escape', 'space', 'up', 'down', 'c', 'v' (required for keyboard press_key)." },
-          modifiers: {
-            type: "array",
-            items: { type: "string", enum: ["command", "option", "control", "shift", "cmd", "alt", "ctrl"] },
-            description: "Simulated modifier keys (optional for keyboard press_key)."
-          }
+          app: { type: "string", enum: ["chrome", "safari", "youtube", "system", "browser_action", "keyboard"] },
+          action: { type: "string", enum: ["open_url", "search", "resolve_latest", "vscode", "service", "volume", "brightness", "clipboard", "scroll", "navigate", "list_tabs", "switch_tab", "type", "press_key"] },
+          url: { type: "string", description: "URL to open" }, query: { type: "string", description: "Search query" }, channel: { type: "string", description: "YT channel" },
+          folder: { type: "string", description: "Folder path" }, service: { type: "string", description: "Service name" }, state: { type: "string", enum: ["start", "stop"] },
+          value: { type: "number", description: "0-100" }, subAction: { type: "string", enum: ["read", "write"] },
+          text: { type: "string", description: "Text to type" }, browser: { type: "string", enum: ["chrome", "safari"] },
+          direction: { type: "string", enum: ["up", "down", "top", "bottom"] },
+          navigateAction: { type: "string", enum: ["back", "forward", "refresh", "close_tab"] },
+          target: { type: "string", description: "Tab index/title" }, key: { type: "string", description: "Key name" },
+          modifiers: { type: "array", items: { type: "string", enum: ["command", "option", "control", "shift", "cmd", "alt", "ctrl"] } }
         },
         required: ["app", "action"]
       }
@@ -192,20 +124,14 @@ const TOOL_SCHEMAS = [
     type: "function",
     function: {
       name: "canvas_control",
-      description: "Control the Visual Canvas dashboard. Draw shapes or display custom HTML elements/layout blocks.",
+      description: "Draw shapes or display HTML on the canvas dashboard.",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["draw_rect", "render_html", "clear_canvas"], description: "The visual action to dispatch." },
-          x: { type: "number", description: "X coordinate (for draw_rect)." },
-          y: { type: "number", description: "Y coordinate (for draw_rect)." },
-          width: { type: "number", description: "Width of rectangle or HTML container." },
-          height: { type: "number", description: "Height of rectangle." },
-          color: { type: "string", description: "CSS stroke color, e.g. '#5b4d9e' (optional)." },
-          lineWidth: { type: "number", description: "Stroke line width (optional)." },
-          label: { type: "string", description: "Text label to display inside/next to the shape (optional)." },
-          html: { type: "string", description: "HTML layout block to render inside the dashboard viewport (required for render_html)." },
-          clearFirst: { type: "boolean", description: "Whether to clear previous HTML cards first (optional, defaults to false)." }
+          action: { type: "string", enum: ["draw_rect", "render_html", "clear_canvas"] },
+          x: { type: "number", description: "X coord" }, y: { type: "number", description: "Y coord" }, width: { type: "number" }, height: { type: "number" },
+          color: { type: "string", description: "CSS color" }, lineWidth: { type: "number" }, label: { type: "string" },
+          html: { type: "string", description: "HTML content" }, clearFirst: { type: "boolean" }
         },
         required: ["action"]
       }
@@ -215,98 +141,29 @@ const TOOL_SCHEMAS = [
 
 /** Build the system prompt dynamically from the current device's OS info — no hardcoding. */
 function buildSystemPrompt(memoryContext: string): string {
-  const home     = os.homedir();
-  const username = os.userInfo().username;
+  const home = os.homedir();
   const platform = os.platform();
   const hostname = os.hostname();
-  const cwd      = process.cwd();
+  const now = new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short", year: "numeric" });
+  const platformNote = platform === "darwin" ? "macOS" : platform === "win32" ? "Windows" : "Linux";
 
-  const desktop   = path.join(home, "Desktop");
-  const downloads = path.join(home, "Downloads");
-  const documents = path.join(home, "Documents");
+  return `You are PandaClaw on ${hostname} (${platformNote}). Full device access. ${now}.
 
-  const platformNote =
-    platform === "win32"
-      ? `This is a Windows machine. Use Windows-style paths (e.g. C:\\Users\\${username}\\Desktop).`
-      : `This is a ${platform === "darwin" ? "macOS" : "Linux"} machine.`;
+CRITICAL RULES:
+- NEVER say "I don't know" — use tools.
+- First check memory_recall for info you might already know. If empty, use web_search.
+- NEVER give manual Terminal/file-explorer instructions. ALWAYS use your tools.
+- Use ABSOLUTE paths. Home: ${home}
+- To edit a file: file_read → modify → file_write.
+- To run/install/delete: use code_exec.
+- After each action, confirm in 1 sentence.
 
-  // Current time for alarm awareness
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-
-  return `You are PandaClaw, a powerful AI agent running locally on ${hostname}.
-You have FULL, UNRESTRICTED access to the ENTIRE device — every file, folder, and command.
-
-${platformNote}
-Username : ${username}
-Home dir : ${home}
-CWD      : ${cwd}
-Now      : ${timeStr} on ${dateStr}
-
-Common locations on this device:
-  Desktop   → ${desktop}
-  Downloads → ${downloads}
-  Documents → ${documents}
-  Pandaclaw → ${cwd}
-
-Your tools:
-  file_read    → read any file anywhere (use absolute paths)
-  file_write   → create or edit any file anywhere (auto-creates parent dirs)
-  list_dir     → browse any folder
-  code_exec    → run any shell command (python3, bun, git, etc.)
-  web_search   → search the internet
-  alarm_set    → set alarms and reminders
-  memory_recall→ recall past conversations
-  app_control  → control apps, browsers, system settings
-  canvas_control→ control the Visual Canvas dashboard
-
-══════════════════════════════════════════════════
-⚠️  MANDATORY BEHAVIOR — NEVER VIOLATE THESE:
-══════════════════════════════════════════════════
-
-🚫 FORBIDDEN — You MUST NEVER:
-  - Tell the user to "open Terminal and run nano/vim/cat"
-  - Tell the user to "open the file explorer"
-  - Give manual step-by-step instructions for things tools can do
-  - Say "I can't directly edit files" — YOU CAN. Use file_write.
-  - Say "you'll need to" or "you can" — DO IT YOURSELF with tools.
-  - Use hardcoded paths like /home/ubuntu, /Users/someuser, C:\\Users\\user — ALWAYS use the dynamic paths shown above (Desktop → ${desktop}, Downloads → ${downloads}, etc.)
-
-✅ REQUIRED — You MUST ALWAYS:
-  1. USE TOOLS for ANY file/folder/code task. Act, don't instruct.
-  2. To EDIT a file:
-       a. FIRST call file_read to get the current content
-       b. THEN call file_write with the complete modified content
-     ✗ WRONG: "To edit the file, open Terminal and run: nano /path/to/file"
-     ✓ RIGHT: Call file_read("/path/to/file") → modify content → call file_write("/path/to/file", newContent)
-  3. To DELETE a file: use code_exec with "rm /absolute/path" (macOS/Linux) or "del C:\\path" (Windows)
-  4. To RUN code: use code_exec — don't show the command, execute it.
-  5. Use ABSOLUTE paths always (starting with /).
-  6. After every tool action, confirm what you did in 1–2 sentences.
-  7. NEVER add -c user.name or -c user.email to git commands.
-  8. To open YouTube's latest video: use app_control app='youtube' action='resolve_latest' FIRST, then open the URL with app='chrome'.
-  9. For system controls (volume, brightness, VS Code, Ollama): use app_control with app='system'.
-  10. For browser tab control (scroll, navigate, switch): use app_control with app='browser_action'.
-
-${memoryContext ? `\n📚 RELEVANT MEMORY (use this context):\n${memoryContext}` : ""}`;
+${memoryContext ? `\nContext:\n${memoryContext}` : ""}`;
 }
 
 // ── Provider chain for tool calling ──────────────────────────────────────
 const TOOL_PROVIDERS = (config: PandaConfig) => [
   {
-    // PRIMARY — llama-3.1-8b-instant: 14.4K req/day, 500K tokens/day
-    // Best rate limits on Groq, fast tool calling for standard tasks
-    name: "groq_8b",
-    base: config.providers.groq?.api_base,
-    key:  config.providers.groq?.api_key,
-    model: "llama-3.1-8b-instant",
-    headers: {} as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // FALLBACK — llama-3.3-70b-versatile: 1K req/day, better reasoning
-    // Used when 8b fails or task needs stronger model
     name: "groq_70b",
     base: config.providers.groq?.api_base,
     key:  config.providers.groq?.api_key,
@@ -315,111 +172,11 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
     withTools: true,
   },
   {
-    // Qwen3 Coder 480B A35B (free) — 1M context, best free model for code & agentic tasks
     name: "openrouter_qwen3_coder",
     base: config.providers.openrouter?.api_base,
     key:  config.providers.openrouter?.api_key,
     model: "qwen/qwen3-coder:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // NVIDIA Nemotron 3 Super 120B (free) — 1M context, strong reasoning + tool calling
-    name: "openrouter_nemotron_super",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "nvidia/nemotron-3-super-120b-a12b:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // Google Gemma 4 31B (free) — 262K context, reasoning support, native function calling
-    name: "openrouter_gemma4_31b",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "google/gemma-4-31b-it:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // Qwen3 Next 80B A3B (free) — 262K context, structured outputs + tool calling
-    name: "openrouter_qwen3_80b",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "qwen/qwen3-next-80b-a3b-instruct:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // MoonshotAI Kimi K2.6 (free) — 262K context, agentic + multi-agent optimised
-    name: "openrouter_kimi_k2",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "moonshotai/kimi-k2.6:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // Google Gemma 4 26B A4B MoE (free) — 262K context, only 3.8B active params = ultra fast
-    name: "openrouter_gemma4_26b",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "google/gemma-4-26b-a4b-it:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // OpenAI GPT-OSS 120B (free) — 131K context, strong tool calling
-    name: "openrouter_gpt_oss",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "openai/gpt-oss-120b:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // Z.ai GLM 4.5 Air (free) — 131K context, reasoning + tool calling
-    name: "openrouter_glm45_air",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "z-ai/glm-4.5-air:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
-    withTools: true,
-  },
-  {
-    // Meta Llama 3.3 70B (free) — 131K context, battle-tested tool calling
-    name: "openrouter_llama",
-    base: config.providers.openrouter?.api_base,
-    key:  config.providers.openrouter?.api_key,
-    model: "meta-llama/llama-3.3-70b-instruct:free",
-    headers: {
-      "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-      "X-Title": "PandaClaw",
-    } as Record<string, string>,
+    headers: { "HTTP-Referer": "https://github.com/senapati484/pandaclaw", "X-Title": "PandaClaw" } as Record<string, string>,
     withTools: true,
   },
   {
@@ -440,6 +197,9 @@ const TOOL_PROVIDERS = (config: PandaConfig) => [
   },
 ];
 
+
+// Providers too small for tool-laden agent requests (skipped silently)
+const SMALL_TOOL_MODELS = new Set(["llama-3.1-8b-instant", "qwen3:0.6b"]);
 
 async function callWithTools(
   config: PandaConfig,
@@ -470,9 +230,9 @@ async function callWithTools(
 
   for (const p of TOOL_PROVIDERS(config)) {
     if (!p.key) continue;
-    
+    if (p.withTools && SMALL_TOOL_MODELS.has(p.model)) continue;
+
     const controller = new AbortController();
-    // 10-second timeout — Groq tool-use calls can take 5-15 seconds
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
     try {
@@ -510,11 +270,11 @@ async function callWithTools(
       return { data, provider: p.name, hadTools: p.withTools };
     } catch (err: any) {
       clearTimeout(timeoutId);
-      const isTimeout = err.name === "AbortError";
-      const errMsg = isTimeout ? "Request timed out after 10s" : err.message;
-      console.error(`[tool-agent] ${p.name} failed: ${errMsg?.slice(0, 120)}`);
-      lastErr = isTimeout ? new Error(`${p.name} timed out after 10s`) : err;
-      continue;
+      if (err.name === "AbortError") {
+        lastErr = new Error(`${p.name} timed out`);
+      } else {
+        lastErr = err;
+      }
     }
   }
 
@@ -636,11 +396,26 @@ async function handleMemoryRecall(args: Record<string, unknown>): Promise<{ succ
   }
 }
 
+function simulateStream(text: string, onChunk?: OnChunk): void {
+  if (!onChunk) return;
+  const words = text.split(" ");
+  let buffer = "";
+  for (const word of words) {
+    buffer += (buffer ? " " : "") + word;
+    if (buffer.length >= 80) {
+      onChunk({ type: "text", text: buffer });
+      buffer = "";
+    }
+  }
+  if (buffer) onChunk({ type: "text", text: buffer });
+}
+
 // ── Main agentic loop ─────────────────────────────────────────────────────
 export async function runToolAgent(
   userMessage: string,
   config: PandaConfig,
-  ctx: ToolContext
+  ctx: ToolContext,
+  onChunk?: OnChunk
 ): Promise<ToolAgentResult> {
   const start = Date.now();
   const toolsUsed: string[] = [];
@@ -700,6 +475,20 @@ export async function runToolAgent(
 
         toolsUsed.push(toolName);
 
+        const progressLabel: Record<string, string> = {
+          web_search: "🔍 Searching the web",
+          file_read: "📖 Reading file",
+          file_write: "✏️ Writing file",
+          list_dir: "📂 Listing directory",
+          code_exec: "⚡ Running command",
+          app_control: "🎮 Controlling app",
+          canvas_control: "🎨 Updating canvas",
+          memory_recall: "🧠 Recalling memory",
+          alarm_set: "⏰ Setting alarm",
+        };
+        const progressMsg = progressLabel[toolName] || `🔧 Running ${toolName}`;
+        onChunk?.({ type: "progress", text: progressMsg });
+
         let toolResult: { success?: boolean; output?: string; data?: unknown; error?: string };
 
         // Handle built-in tools
@@ -729,6 +518,10 @@ export async function runToolAgent(
 
     // Final answer
     const answer = msg.content ?? "(no response)";
+
+    // Stream final answer in chunks
+    simulateStream(answer, onChunk);
+    onChunk?.({ type: "done" });
 
     // Save to per-chat history (trim to content only for history)
     pushChatHistory(chatId, "assistant", answer);
