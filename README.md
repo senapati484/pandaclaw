@@ -27,25 +27,81 @@
 
 ---
 
-## Quick Start
+## 📦 Installation
+
+You can install PandaClaw using one of the three options below:
+
+### Option 1: Automated Script (Recommended)
+
+This script checks for/installs Bun, clones the repository, registers the executable globally, and initializes your configuration:
 
 ```bash
-# Install
+curl -fsSL https://raw.githubusercontent.com/senapati484/pandaclaw/main/install.sh | bash
+```
+
+### Option 2: via npm / Bun
+
+```bash
+# Global install using Bun (native runtime)
+bun install -g pandaclaw
+
+# Or global install using npm
+npm install -g pandaclaw
+```
+
+### Option 3: Manual Clone (Development)
+
+```bash
 git clone https://github.com/senapati484/pandaclaw
 cd pandaclaw
 bun install
-
-# Configure API keys
-cp .env.example .env   # or run: bun run setup
-
-# Run
-bun run ask            # Interactive ask mode
+npm install -g .
 ```
 
-## Usage
+---
+
+## ⚙️ Configuration
 
 ```bash
-pandaclaw ask          # Ask questions, run commands, control apps
+# Interactive setup wizard
+pandaclaw setup
+```
+
+Or create `config.json`:
+
+```json
+{
+  "providers": {
+    "groq": {
+      "api_key": "gsk_...",
+      "api_base": "https://api.groq.com/openai/v1"
+    },
+    "openrouter": {
+      "api_key": "sk-or-...",
+      "api_base": "https://openrouter.ai/api/v1"
+    },
+    "nvidia_nim": {
+      "api_key": "nvapi-...",
+      "api_base": "https://integrate.api.nvidia.com/v1"
+    },
+    "ollama": {
+      "api_key": "ollama",
+      "api_base": "http://127.0.0.1:11434/v1"
+    }
+  }
+}
+```
+
+Environment variables override `config.json`:
+- `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `NVIDIA_NIM_KEY`
+- `OLLAMA_API_BASE` / `TELEGRAM_TOKEN`
+
+---
+
+## 🎮 Usage
+
+```bash
+pandaclaw ask          # Interactive ask mode (3 routes)
 pandaclaw agent        # Autonomous swarm for multi-step goals
 pandaclaw plan         # Goal → plan → execute with per-step approval
 pandaclaw dashboard    # Web dashboard (port 18789)
@@ -60,19 +116,21 @@ Or via bun scripts:
 bun run ask            # Interactive ask mode
 bun run dashboard      # Web dashboard
 bun run setup          # Configuration wizard
-bun run typecheck      # TypeScript check
+bun run typecheck      # TypeScript type check
 bun test               # Run test suite (93 tests)
 ```
 
-## Ask Mode — 3 Routes
+---
 
-The `ask` mode classifies your input into one of three routes:
+## 🐼 Ask Mode — 3 Route Classifier
+
+The `ask` mode classifies every input into one of three routes:
 
 | Route | When | What happens |
 | :--- | :--- | :--- |
-| **simple** | Greetings, quick facts | Direct LLM call (Groq fast-path) |
-| **complex** | Hard reasoning questions | DeepSeek R1 + verification loop |
-| **action** | File ops, shell commands, web search, app control | Tool agent with web search, memory recall, file access, shell, app control |
+| **simple** | Greetings, quick facts | Direct LLM call via Groq (`llama-3.3-70b`), no tools |
+| **complex** | Hard reasoning questions | DeepSeek R1 reasoning + verification loop via OpenRouter |
+| **action** | File ops, shell, web search, app control | Tool agent with full tool access and streaming output |
 
 The tool agent chains across 4 providers with automatic fallback:
 
@@ -80,34 +138,97 @@ The tool agent chains across 4 providers with automatic fallback:
 groq_70b → openrouter_qwen3_coder → nvidia_nim → ollama
 ```
 
-## Tools
+If a provider rate-limits (429), times out, or fails, the next provider in the chain is tried silently. Small-context models (`llama-3.1-8b-instant`, `qwen3:0.6b`) are skipped automatically when tool schemas exceed their context window.
 
-| Tool | What it does |
+---
+
+## 🛠️ Tools
+
+The tool agent has full access to the device via these tools:
+
+| Tool | Description |
 | :--- | :--- |
-| `file_read` / `file_write` / `list_dir` | File system access (absolute paths) |
-| `code_exec` | Shell command execution |
-| `web_search` | Tavily API + DuckDuckGo fallback |
-| `memory_recall` | Search past conversations (TF-IDF) |
-| `app_control` | Launch apps, browser control, volume/brightness, keyboard input |
-| `canvas_control` | Draw shapes / render HTML on the web dashboard |
-| `alarm_set` | macOS / Linux alarms with system notifications |
+| `file_read` | Read any file (absolute paths) |
+| `file_write` | Write or create any file (auto-creates parent dirs) |
+| `list_dir` | List files in a directory (optionally recursive) |
+| `code_exec` | Execute any shell command |
+| `web_search` | Search the web (Tavily API + DuckDuckGo fallback) |
+| `memory_recall` | Recall past conversations and facts via TF-IDF |
+| `app_control` | Control macOS apps — Chrome/Safari, YouTube, system settings, volume, brightness, clipboard, keyboard input |
+| `canvas_control` | Draw shapes or render HTML on the web dashboard |
+| `alarm_set` | Set macOS/Linux alarms with system notifications |
 
-## Configuration
+### App Control Actions
 
-```json
-{
-  "providers": {
-    "groq": { "api_key": "gsk_...", "api_base": "https://api.groq.com/openai/v1" },
-    "openrouter": { "api_key": "sk-or-...", "api_base": "https://openrouter.ai/api/v1" },
-    "nvidia_nim": { "api_key": "nvapi-...", "api_base": "https://integrate.api.nvidia.com/v1" },
-    "ollama": { "api_key": "ollama", "api_base": "http://127.0.0.1:11434/v1" }
-  }
-}
+The `app_control` tool covers:
+
+- **Chrome** — open URLs, search
+- **Safari** — open URLs
+- **YouTube** — resolve latest video from a channel
+- **System** — launch VS Code, start/stop services, adjust volume/brightness (0-100), clipboard read/write, screenshot
+- **Browser actions** — scroll, navigate (back/forward/refresh/close), list tabs, switch tabs (by index or title)
+- **Keyboard** — type text, press keys with modifiers (cmd, option, shift, etc.)
+
+---
+
+## 💬 Streaming Output
+
+All tool agent responses stream progressively with a typing effect:
+
+```
+You: what is python
+
+  🐼 action mode · 810ms · tool-agent · tools: memory_recall
+
+PandaClaw: Python is a high-level, general-purpose programming language...
 ```
 
-Environment variables override config values: `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `NVIDIA_NIM_KEY`, `TELEGRAM_TOKEN`.
+- Tool progress is shown inline (searching, reading files, etc.)
+- Final answer streams word-by-word in real-time
+- Stats badge shows mode, duration, provider, and tools used
 
-## Project Layout
+---
+
+## 🧠 Memory System
+
+PandaClaw persists conversation context across sessions:
+
+- **Chat history** — per-conversation JSONL logs at `.pandaclaw/chats.jsonl`. Keeps last 10 turns in prompt context.
+- **TF-IDF semantic recall** — `recallRelevant()` matches past entries via keyword scoring in < 1ms, zero API cost.
+- **Knowledge graph** — triplet relations (subject → predicate → object) stored at `.pandaclaw/graph_memory.json`. Auto-synced to `.pandaclaw/KNOWLEDGE_GRAPH.md`.
+- **Background compaction** — when history exceeds 12 turns, oldest 4 turns are pruned and summarized into `.pandaclaw/COMPACTED_MEMORY.md`.
+- **Persistence** — user and assistant messages saved to memory on every turn.
+
+---
+
+## 🖥️ Web Dashboard
+
+```bash
+pandaclaw dashboard
+# or
+bun run dashboard
+```
+
+Serves a glassmorphic dashboard at `http://localhost:18789` with:
+- Real-time chat interface with streaming responses
+- Visual canvas for agent drawings (rectangles, HTML cards)
+- Live WebSocket logs
+- Dark/light theme toggle
+
+---
+
+## 🔌 Multi-Provider Fallback
+
+| Provider | Model | Role |
+| :--- | :--- | :--- |
+| Groq | `llama-3.3-70b-versatile` | Primary tool-calling provider |
+| OpenRouter | `qwen/qwen3-coder:free` | Fallback when Groq is rate-limited |
+| Nvidia NIM | `meta/llama-3.3-70b-instruct` | Second fallback |
+| Ollama | `qwen3:0.6b` | Local fallback for offline use |
+
+---
+
+## 📁 Project Layout
 
 ```
 pandaclaw/
@@ -118,36 +239,66 @@ pandaclaw/
 │   ├── config-schema.ts      # Zod validation schema
 │   ├── llm.ts                # Unified callLLM with streaming + response cache
 │   ├── context-compressor.ts # Token compression utilities
-│   ├── response-cache.ts     # TF-IDF semantic cache
+│   ├── response-cache.ts     # TF-IDF semantic cache (0.92 threshold)
 │   └── providers/            # Groq, OpenRouter, Nvidia, Ollama adapters
 ├── modes/
-│   ├── ask/                  # Ask mode (classifier, tool agent, fast path, panda mode)
-│   │   ├── orchestrator.ts   # CLI loop with streaming
-│   │   ├── tool-agent.ts     # Agentic tool-calling loop
-│   │   ├── classifier.ts     # 3-route classifier
-│   │   ├── fast-path.ts      # Simple LLM call
-│   │   └── panda-mode.ts     # DeepSeek R1 reasoning
-│   ├── agent/                # Autonomous agent mode (reactor loop, swarm)
-│   ├── plan/                 # Strategic plan mode
-│   └── gateway/              # Telegram / Slack / webchat adapters
-├── tools/                    # Tool registry (web search, file ops, app control, canvas)
+│   ├── ask/                  # Ask mode — classifier, tool agent, fast path, panda mode
+│   │   ├── orchestrator.ts   # CLI loop with streaming output
+│   │   ├── tool-agent.ts     # Agentic tool-calling loop (LLM + tool execution)
+│   │   ├── classifier.ts     # 3-route classifier (simple/complex/action)
+│   │   ├── fast-path.ts      # Simple LLM call without tools
+│   │   └── panda-mode.ts     # DeepSeek R1 reasoning + verification
+│   ├── agent/                # Autonomous agent mode (reactor loop, swarm coordinator)
+│   ├── plan/                 # Strategic plan mode (goal → plan → execute)
+│   └── gateway/              # Telegram / Slack / webchat channel adapters
+├── tools/                    # Tool registry
+│   ├── index.ts              # Tool registration and execution router
+│   ├── web-search.ts         # Tavily + DuckDuckGo search
+│   ├── web-fetch.ts          # URL content fetcher
+│   ├── file-tools.ts         # File read/write/list operations
+│   ├── code-exec.ts          # Shell command execution
+│   ├── canvas-tools.ts       # Canvas drawing interface
+│   ├── apps/                 # App control (Chrome, Safari, YouTube, system, keyboard)
+│   ├── dynamic-loader.ts     # Skill loader for /skills folder
+│   └── code-formatter.ts     # Auto-detect formatter (Biome, Prettier, ESLint)
 ├── memory/
-│   ├── store.ts              # Chat history, TF-IDF recall, graph relations
+│   ├── store.ts              # Chat history, TF-IDF recall, graph relations, pruning
 │   └── consolidator.ts       # Background memory compaction
 ├── canvas/                   # Web dashboard (Bun.serve, port 18789)
+│   ├── server.ts             # Bun.serve with SSE streaming + WebSocket logs
+│   ├── index.html            # Dashboard HTML
+│   └── public/               # Frontend JS/CSS
 ├── vision/                   # 4-stage vision pipeline (Perceive → Locate → Reason → Act)
-├── tui/                      # Setup wizard, wakeup menu
-├── tests/                    # 93 unit tests
-└── skills/                   # User-defined pluggable tools
+├── tui/                      # Terminal UI
+│   ├── wakeup.ts             # Welcome menu (figlet ASCII art)
+│   ├── setup.ts              # Interactive config wizard
+│   └── process-lock.ts       # PID file lock for single instance
+├── tests/                    # 93 unit tests across 17 files
+│   ├── ask.test.ts           # Classifier + AskOrchestrator tests
+│   ├── config-schema.test.ts # Config validation tests
+│   ├── session-manager.test.ts
+│   ├── swarm.test.ts
+│   ├── memory-consolidator.test.ts
+│   └── logger.test.ts
+├── utils/
+│   └── logger.ts             # Structured JSONL logger
+├── types/
+│   └── shared.ts             # Shared type definitions
+└── skills/                   # User-defined pluggable tools (loaded at startup)
 ```
 
-## Memory
+---
 
-- **Chat history** — per-conversation JSONL logs with auto-pruning (keeps last 10 turns)
-- **TF-IDF recall** — keyword relevance matching via `recallRelevant()` in `< 1ms`
-- **Knowledge graph** — triplet relations (subject/predicate/object) extracted from conversations
-- **Background compaction** — oldest 4 turns compacted into summary facts every 12 turns
+## 🧪 Testing
 
-## License
+```bash
+bun test                    # Run all 93 tests
+bun test --watch            # Watch mode
+bun run typecheck           # TypeScript type check (tsc --noEmit)
+```
+
+---
+
+## 📜 License
 
 MIT
