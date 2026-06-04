@@ -301,4 +301,4 @@ bun run typecheck           # TypeScript type check (tsc --noEmit)
 
 ## 📜 License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2025 senapati484
