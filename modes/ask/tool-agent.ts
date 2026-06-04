@@ -233,7 +233,7 @@ async function callWithTools(
     if (p.withTools && SMALL_TOOL_MODELS.has(p.model)) continue;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
     try {
       const body: Record<string, unknown> = {

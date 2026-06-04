@@ -3,10 +3,12 @@
 
 import TelegramBot from "node-telegram-bot-api";
 import chalk from "chalk";
-import type { AskTask } from "../../modes/agent/types.js";
-import { classifyTask } from "../ask/classifier.js";
+import type { AskTask, AskResult, ToolContext } from "../../modes/agent/types.js";
+import type { ToolAgentResult } from "../ask/tool-agent.js";
+import { classifyRoute } from "../ask/classifier.js";
 import { runFastPath } from "../ask/fast-path.js";
 import { runPandaMode } from "../ask/panda-mode.js";
+import { runToolAgent } from "../ask/tool-agent.js";
 import { runVisionPipeline } from "../../vision/index.js";
 import { readConfig } from "../../ai/ai.config.js";
 import { saveToMemory } from "../../memory/store.js";
@@ -144,10 +146,10 @@ export async function runTelegramMode(): Promise<void> {
 
     await bot.sendChatAction(chatId, "typing");
 
-    const taskType = classifyTask(userText);
+    const route = classifyRoute(userText);
     const task: AskTask = {
       id: crypto.randomUUID(),
-      type: taskType,
+      type: route === "simple" ? "simple" : "complex",
       input: userText,
       conversationHistory: [], // TODO: per-chat history from memory
       createdAt: new Date(),
@@ -155,7 +157,7 @@ export async function runTelegramMode(): Promise<void> {
 
     let thinkingMsgId: number | undefined;
 
-    if (taskType === "complex") {
+    if (route === "complex") {
       const thinkingMsg = await bot.sendMessage(chatId, "🐼 *thinking...*", {
         parse_mode: "Markdown",
       });
@@ -163,19 +165,32 @@ export async function runTelegramMode(): Promise<void> {
     }
 
     try {
-      const result =
-        taskType === "complex"
-          ? await runPandaMode(task, config)
-          : await runFastPath(task, config);
+      let result: ToolAgentResult | AskResult;
+      if (route === "action") {
+        const toolCtx: ToolContext = {
+          userId: String(chatId),
+          channel: "telegram",
+          workspacePath: "/",
+          requestConsent: async () => true,
+        };
+        result = await runToolAgent(userText, config, toolCtx);
+      } else if (route === "complex") {
+        result = await runPandaMode(task, config);
+      } else {
+        result = await runFastPath(task, config);
+      }
 
       // Delete thinking indicator
       if (thinkingMsgId) {
         await bot.deleteMessage(chatId, thinkingMsgId).catch(() => {});
       }
 
+      const toolsUsed = (result as any).toolsUsed;
       const footer =
-        taskType === "complex"
-          ? `\n\n_🐼 panda mode · ${result.durationMs}ms${result.verified ? " · verified ✓" : ""}_`
+        route === "complex"
+          ? `\n\n_🐼 panda mode · ${result.durationMs}ms${"verified" in result && result.verified ? " · verified ✓" : ""}_`
+          : route === "action"
+          ? `\n\n_🐼 action mode · ${result.durationMs}ms${toolsUsed?.length ? ` · tools: ${toolsUsed.join(", ")}` : ""}_`
           : `\n\n_⚡ fast · ${result.durationMs}ms_`;
 
       await bot.sendMessage(chatId, result.answer + footer, { parse_mode: "Markdown" });
@@ -187,7 +202,7 @@ export async function runTelegramMode(): Promise<void> {
           timestamp: Date.now(),
           role: "user",
           content: userText,
-          importance: taskType === "complex" ? "high" : "low",
+          importance: route === "simple" ? "low" : "high",
         });
       } catch {
         // Non-fatal

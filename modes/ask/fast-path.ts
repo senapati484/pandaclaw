@@ -110,12 +110,11 @@ export async function runFastPath(
   const { maxTokens, temperature } = config.routing.fast_path;
 
   // ── Provider fallback chain ──
-  // 1. Groq 8B instant (PRIMARY — 14.4K req/day, 500K tokens/day)
-  // 2. Groq 70B versatile (fallback for harder queries — 1K req/day)
-  // 3. OpenRouter Llama 3.3 70B free
-  // 4. OpenRouter DeepSeek V4 Flash free (1M context)
-  // 5. Nvidia NIM (chat model)
-  // 6. Ollama (local fallback — always available if running)
+  // 1. Groq 8B instant (PRIMARY — free tier, 14.4K req/day)
+  // 2. Groq 70B versatile (fallback — 1K req/day)
+  // 3. OpenRouter fallback models
+  // 4. Nvidia NIM (cloud GPU)
+  // 5. Ollama (local fallback)
   const chain: Array<() => Promise<{ data: LLMResponse; provider: string } | null>> = [
     // ── Groq 8B instant — PRIMARY (14.4K req/day, fast, avoids rate limits) ──
     () =>
