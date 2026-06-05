@@ -5,9 +5,7 @@ import chalk from "chalk";
 import type { Plan, PlanStep, PlanExecutionResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { runTool } from "../../tools/index.js";
-
-const PANDA = chalk.hex("#5b4d9e");
-const FACE  = chalk.hex("#e8dcf8");
+import { purple as PANDA, lavender as FACE } from "../../utils/brand.js";
 
 async function executeStep(
   step: PlanStep,

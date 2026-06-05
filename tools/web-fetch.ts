@@ -6,7 +6,7 @@ import type { ToolDefinition } from "../modes/agent/types.js";
 export const webFetchTool: ToolDefinition = {
   name: "web_fetch",
   description: "Fetch and extract text content from a URL",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   execute: async (args, _ctx) => {
     const url = args.url as string;

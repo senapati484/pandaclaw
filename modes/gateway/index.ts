@@ -1,104 +1,126 @@
 import { readConfig } from "../../ai/ai.config.js";
 import { saveToMemory, saveChatMessage } from "../../memory/store.js";
 import { runVisionPipeline } from "../../vision/index.js";
-import type { ChannelAdapter, ChannelMessage } from "./adapter.js";
+import type {
+  ChannelAdapter,
+  InboundMessage,
+  OutboundMessage,
+} from "./channel-adapter.js";
 import { TelegramAdapter } from "./adapters/telegram.js";
 import { SlackAdapter } from "./adapters/slack.js";
 import { WebChatAdapter } from "./adapters/webchat.js";
 import type { ToolContext } from "../../modes/agent/types.js";
 import { runToolAgent } from "../ask/tool-agent.js";
 import { classifyRoute } from "../ask/classifier.js";
+import type { AgentDefinition } from "../agent/agent-types.js";
+import { MultiGateway, type AgentMessageHandler } from "../agent/multi-gateway.js";
+import { purple, PANDA } from "../../utils/brand.js";
 import chalk from "chalk";
 
-/** Trigger background memory consolidation every N messages to keep memory lean. */
 const CONSOLIDATE_EVERY_N_MESSAGES = 3;
 
 export class Gateway {
   private config = readConfig();
-  private adapters: Map<string, ChannelAdapter> = new Map();
+  private messageHandler: ((msg: InboundMessage) => Promise<OutboundMessage | null>) | null = null;
   private messageCounter = 0;
+  private multi: MultiGateway;
+  private _adapters: Map<string, ChannelAdapter> = new Map();
 
-  constructor() {
+  constructor(handler?: AgentMessageHandler) {
+    const adapters: ChannelAdapter[] = [];
     try {
-      this.adapters.set("telegram", new TelegramAdapter(this.config));
-    } catch {
-      // Ignored if telegram configuration is incomplete
-    }
-    this.adapters.set("slack", new SlackAdapter(this.config));
-    this.adapters.set("webchat", new WebChatAdapter());
+      adapters.push(new TelegramAdapter(this.config));
+    } catch {}
+    adapters.push(new SlackAdapter(this.config));
+    adapters.push(new WebChatAdapter());
+
+    for (const a of adapters) this._adapters.set(a.platform, a);
+
+    const defaultHandler: AgentMessageHandler = handler ?? (async (agent, msg) => {
+      if (this.messageHandler) return await this.messageHandler(msg);
+      return await this.defaultRouteMessage(agent, msg);
+    });
+
+    this.multi = new MultiGateway(adapters, this.config, { handler: defaultHandler });
   }
 
   public getAdapter(name: string): ChannelAdapter | undefined {
-    return this.adapters.get(name);
+    return this._adapters.get(name);
+  }
+
+  public register(adapter: ChannelAdapter): void {
+    this.multi.register(adapter);
+    this._adapters.set(adapter.platform, adapter);
+  }
+
+  public onMessage(handler: (msg: InboundMessage) => Promise<OutboundMessage | null>): void {
+    this.messageHandler = handler;
   }
 
   public async start(channels?: string[]): Promise<void> {
-    console.log(chalk.hex("#5b4d9e")("\n🐼 Starting PandaClaw Gateway..."));
-
-    for (const [name, adapter] of this.adapters) {
-      if (channels && !channels.includes(name)) {
-        continue;
-      }
-      try {
-        await adapter.initialize();
-        console.log(chalk.gray(`  ⚡ Loaded channel: [${name}]`));
-
-        adapter.onMessage(async (msg) => {
-          await this.routeMessage(adapter, msg);
-        });
-      } catch (err: any) {
-        console.log(chalk.red(`  ❌ Failed to load channel [${name}]: ${err.message}`));
-      }
-    }
+    console.log(purple(`\n${PANDA} Starting PandaClaw Gateway...`));
+    await this.multi.start(channels);
   }
 
   public async stop(): Promise<void> {
-    for (const adapter of this.adapters.values()) {
-      await adapter.stop();
+    await this.multi.stop();
+  }
+
+  public async broadcast(message: OutboundMessage, sourcePlatform?: string): Promise<void> {
+    for (const [platform, adapter] of this._adapters) {
+      if (platform === sourcePlatform) continue;
+      try {
+        await adapter.send({ channelId: "*" }, message);
+      } catch {}
     }
   }
 
-  private async handleVisionMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
-    const chatId = msg.chatId;
+  public health(): Record<string, { ok: boolean; error?: string }> {
+    return this.multi.health();
+  }
+
+  // ============ Default per-message handler ============
+
+  private async handleVisionMessage(msg: InboundMessage): Promise<OutboundMessage | null> {
     try {
       const result = await runVisionPipeline(msg.photoBuffer!, msg.mimeType!, msg.text ?? "Describe this image");
-      let reply = `🐼 *Vision Analysis*\n_Type: ${result.contentType}_\n\n`;
+      let text = `${PANDA} *Vision Analysis*\n_Type: ${result.contentType}_\n\n`;
 
       switch (result.action.type) {
-        case "describe":   reply += result.action.summary; break;
-        case "diagnose":   reply += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`; break;
-        case "navigate":   reply += result.action.instruction; break;
-        case "code_review": reply += result.action.findings.map((f) => `• ${f.message}`).join("\n"); break;
-        case "extract":    reply += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```"; break;
-        default:           reply += JSON.stringify(result.action);
+        case "describe":   text += result.action.summary; break;
+        case "diagnose":   text += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`; break;
+        case "navigate":   text += result.action.instruction; break;
+        case "code_review": text += result.action.findings.map((f) => `• ${f.message}`).join("\n"); break;
+        case "extract":    text += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```"; break;
+        default:           text += JSON.stringify(result.action);
       }
 
-      await adapter.sendMessage(chatId, reply);
+      return { text, parseMode: "Markdown" };
     } catch (err: any) {
-      await adapter.sendMessage(chatId, `❌ Vision Error: ${err.message}`);
+      return { text: `❌ Vision Error: ${err.message}` };
     }
   }
 
-  private async handleGatewayCommand(adapter: ChannelAdapter, chatId: string, userText: string): Promise<boolean> {
+  private async handleGatewayCommand(userText: string): Promise<OutboundMessage | null> {
     if (userText === "/start") {
-      await adapter.sendMessage(
-        chatId,
-        `🐼 *PandaClaw Agent is online!*\n\n` +
+      return {
+        text:
+          `${PANDA} *PandaClaw Agent is online!*\n\n` +
           `I have *direct access* to your local machine:\n` +
           `• 📁 Read \& write files\n` +
           `• 📂 List directories\n` +
           `• ⚡ Run code \& commands\n` +
           `• 🔍 Search the web\n` +
           `• 👁 Analyze images\n\n` +
-          `Just tell me what to do — I'll do it!`
-      );
-      return true;
+          `Just tell me what to do — I'll do it!`,
+        parseMode: "Markdown",
+      };
     }
 
     if (userText === "/help") {
-      await adapter.sendMessage(
-        chatId,
-        `🐼 *PandaClaw Help*\n\n` +
+      return {
+        text:
+          `${PANDA} *PandaClaw Help*\n\n` +
           `*File operations:*\n` +
           `  "read testing.txt"\n` +
           `  "write my name to notes.txt"\n` +
@@ -111,9 +133,9 @@ export class Gateway {
           `*Vision:*\n` +
           `  Send any photo for AI analysis\n\n` +
           `*/start* - restart\n` +
-          `*/status* - show machine info`
-      );
-      return true;
+          `*/status* - show machine info`,
+        parseMode: "Markdown",
+      };
     }
 
     if (userText === "/status") {
@@ -122,23 +144,19 @@ export class Gateway {
       const providerLines = Object.entries(p)
         .map(([name, cfg]) => `• ${name}: ${cfg?.api_key || cfg?.api_base ? "✅" : "❌"}`)
         .join("\n");
-      await adapter.sendMessage(
-        chatId,
-        `🐼 *PandaClaw Status*\n\n` +
-          `• Workspace: \`${cwd}\`\n` +
-          providerLines
-      );
-      return true;
+      return {
+        text: `${PANDA} *PandaClaw Status*\n\n• Workspace: \`${cwd}\`\n${providerLines}`,
+        parseMode: "Markdown",
+      };
     }
 
-    return false;
+    return null;
   }
 
   private async runAgentRoute(
     userText: string,
     route: string,
-    toolCtx: ToolContext,
-    chatId: string
+    toolCtx: ToolContext
   ): Promise<{ answer: string; toolsUsed: string[]; durationMs: number }> {
     if (route === "action") {
       return await runToolAgent(userText, this.config, toolCtx);
@@ -161,7 +179,6 @@ export class Gateway {
       };
     }
 
-    // default: simple fast path
     const { runFastPath } = await import("../ask/fast-path.js");
     const task = {
       id: crypto.randomUUID(),
@@ -178,40 +195,35 @@ export class Gateway {
     };
 
     try {
-      saveChatMessage(chatId, "user", userText);
-      saveChatMessage(chatId, "assistant", result.answer);
+      saveChatMessage(toolCtx.userId ?? "unknown", "user", userText);
+      saveChatMessage(toolCtx.userId ?? "unknown", "assistant", result.answer);
     } catch {}
 
     return result;
   }
 
-  private async executeAgentRoute(adapter: ChannelAdapter, chatId: string, msg: ChannelMessage): Promise<void> {
+  private async executeAgentRoute(adapter: ChannelAdapter, msg: InboundMessage, agent?: AgentDefinition): Promise<OutboundMessage | null> {
     const userText = msg.text!;
-    // Derive channel name from adapter class (e.g. TelegramAdapter → "telegram")
-    const channelName = adapter.constructor.name
-      .replace(/Adapter$/i, "")
-      .toLowerCase() as ToolContext["channel"];
+    const channelName = adapter.platform;
     const toolCtx: ToolContext = {
       userId: msg.senderId,
-      channel: channelName,
-      workspacePath: "/",
+      channel: channelName as ToolContext["channel"],
+      workspacePath: agent?.workspacePath ?? "/",
       requestConsent: async () => true,
     };
 
     try {
-      console.log(chalk.hex("#5b4d9e")(`\n🐼 [Telegram] ${msg.senderName}: ${userText.slice(0, 80)}`));
+      console.log(purple(`\n${PANDA} [${adapter.platform}] ${msg.senderName}: ${userText.slice(0, 80)}`));
 
       const route = classifyRoute(userText);
       console.log(chalk.gray(`  Route: ${route}`));
 
-      const result = await this.runAgentRoute(userText, route, toolCtx, chatId);
+      const result = await this.runAgentRoute(userText, route, toolCtx);
 
       const toolBadge =
         result.toolsUsed.length > 0
           ? `\n\n_🔧 tools: ${result.toolsUsed.join(", ")} · ${result.durationMs}ms_`
           : `\n\n_⚡ ${result.durationMs}ms_`;
-
-      await adapter.sendMessage(chatId, result.answer + toolBadge);
 
       this.messageCounter++;
       if (this.messageCounter % CONSOLIDATE_EVERY_N_MESSAGES === 0) {
@@ -232,6 +244,7 @@ export class Gateway {
         });
       } catch {}
 
+      return { text: result.answer + toolBadge, parseMode: "Markdown" };
     } catch (err: any) {
       const raw: string = err.message ?? "";
       let friendly = `❌ Error: ${raw || "Unknown error occurred"}`;
@@ -241,25 +254,32 @@ export class Gateway {
         friendly = "🌐 *All AI providers unreachable.* Check your internet or API keys.";
       }
       console.error(chalk.red(`[Gateway error] ${raw}`));
-      await adapter.sendMessage(chatId, friendly);
+      return { text: friendly, parseMode: "Markdown" };
     }
   }
 
-  private async handleTextMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
-    const chatId = msg.chatId;
-    const userText = msg.text!;
-
-    const isCommand = await this.handleGatewayCommand(adapter, chatId, userText);
-    if (isCommand) return;
-
-    await this.executeAgentRoute(adapter, chatId, msg);
-  }
-
-  private async routeMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
+  private async defaultRouteMessage(agent: AgentDefinition, msg: InboundMessage): Promise<OutboundMessage | null> {
+    // Use the first registered adapter for platform name. The actual reply delivery
+    // is handled by MultiGateway.dispatch, which knows the originating adapter.
+    const adapter = this._findAdapterForAgent(agent) ?? Array.from(this._adapters.values())[0];
     if (msg.photoBuffer && msg.mimeType) {
-      await this.handleVisionMessage(adapter, msg);
-    } else if (msg.text) {
-      await this.handleTextMessage(adapter, msg);
+      return await this.handleVisionMessage(msg);
     }
+    if (msg.text) {
+      const cmd = await this.handleGatewayCommand(msg.text);
+      if (cmd) return cmd;
+      if (adapter) {
+        return await this.executeAgentRoute(adapter, msg, agent);
+      }
+    }
+    return null;
+  }
+
+  private _findAdapterForAgent(agent: AgentDefinition): ChannelAdapter | undefined {
+    for (const binding of agent.bindings) {
+      const a = this._adapters.get(binding.platform);
+      if (a) return a;
+    }
+    return undefined;
   }
 }

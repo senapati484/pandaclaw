@@ -83,6 +83,52 @@ const pandaConfigSchema = z.object({
     warn_at_usd: 0.25,
     action: "warn"
   }),
+  security: z.record(
+    z.string(),
+    z.record(z.string(), z.enum(["safe", "ask", "deny"]))
+  ).optional().default({}),
+  rag: z.object({
+    enabled: z.boolean().default(true),
+    dbPath: z.string().default("~/.pandaclaw/rag.db"),
+    embedder: z.enum(["auto", "tfidf", "xenova"]).default("auto"),
+    tfidfDim: z.number().int().positive().default(512),
+    autoIndexMemory: z.boolean().default(true),
+    autoIndexMemoryIntervalMs: z.number().int().positive().default(30_000),
+  }).optional().default({
+    enabled: true,
+    dbPath: "~/.pandaclaw/rag.db",
+    embedder: "auto",
+    tfidfDim: 512,
+    autoIndexMemory: true,
+    autoIndexMemoryIntervalMs: 30_000,
+  }),
+  agents: z.object({
+    default: z.string().optional().default("main"),
+    list: z.array(z.object({
+      id: z.string().min(1),
+      workspace: z.string().optional(),
+      bindings: z.array(z.string()).optional().default([]),
+      identity: z.object({
+        name: z.string(),
+        theme: z.string().optional(),
+        emoji: z.string().optional(),
+        avatar: z.string().optional(),
+      }).optional(),
+      systemPromptPrefix: z.string().optional(),
+      isDefault: z.boolean().optional().default(false),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    })).optional().default([]),
+  }).optional().default({ default: "main", list: [] }),
+  mcp: z.object({
+    enabled: z.boolean().default(true),
+    servers: z.array(z.object({
+      name: z.string().min(1),
+      command: z.string().min(1),
+      args: z.array(z.string()).optional().default([]),
+      env: z.record(z.string(), z.string()).optional(),
+      autoReconnect: z.boolean().optional().default(true),
+    })).optional().default([]),
+  }).optional().default({ enabled: true, servers: [] }),
   webhooks: z.array(z.object({
     source: z.string(),
     secret: z.string().optional().default(""),

@@ -163,7 +163,7 @@ export const codeExecTool: ToolDefinition = {
   description:
     "Execute any shell command on the device and return output. " +
     "Always includes exitCode. On failure also includes an actionable 'hint' field explaining how to fix the error.",
-  risky: false,   // Telegram's paired user is pre-authorized
+  riskLevel: "ask",
   readOnly: false,
   execute: async (args) => {
     let command = args.code as string;

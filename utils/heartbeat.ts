@@ -8,6 +8,7 @@ import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
 import { classifyRoute } from "../modes/ask/classifier.js";
 import { getMemoryDir } from "./paths.js";
+import { purple } from "./brand.js";
 
 export interface HeartbeatRunEvent {
   timestamp: number;
@@ -222,7 +223,7 @@ export class HeartbeatEngine {
       requestConsent: async () => true, // Heartbeat runs autonomously in background
     };
 
-    console.log(chalk.hex("#5b4d9e")(`\n⏰ [Heartbeat] Running task: "${task.name}" (${route} route)`));
+    console.log(purple(`\n⏰ [Heartbeat] Running task: "${task.name}" (${route} route)`));
 
     let answer = "";
     try {

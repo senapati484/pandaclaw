@@ -1,20 +1,21 @@
 import TelegramBot from "node-telegram-bot-api";
-import type { ChannelAdapter, ChannelMessage } from "../adapter.js";
+import type {
+  ChannelAdapter,
+  InboundMessage,
+  OutboundMessage,
+  ChannelRecipient,
+  ChannelHealth,
+} from "../channel-adapter.js";
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import chalk from "chalk";
-
-// ── Paired users storage ──────────────────────────────────────────────────
-// Paired user IDs are stored in .pandaclaw/paired-users.json which is gitignored.
-// This means each device running PandaClaw has its own local authorized users list.
-// The shared bot token lives in config.json, but authorization is per-device.
+import { purple, lavender } from "../../../utils/brand.js";
 
 function getPairedUsersPath(): string {
   const localPath = path.join(process.cwd(), ".pandaclaw", "paired-users.json");
   if (fs.existsSync(path.dirname(localPath))) return localPath;
-  // Fallback: global ~/.pandaclaw/paired-users.json
   return path.join(os.homedir(), ".pandaclaw", "paired-users.json");
 }
 
@@ -34,7 +35,6 @@ function savePairedUser(userId: number): void {
   const filePath = getPairedUsersPath();
   const dir = path.dirname(filePath);
 
-  // Ensure the .pandaclaw directory exists
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -54,24 +54,65 @@ function savePairedUser(userId: number): void {
   }
 }
 
-// ── Adapter ───────────────────────────────────────────────────────────────
-
 export class TelegramAdapter implements ChannelAdapter {
-  public name = "telegram";
+  public readonly name = "TelegramAdapter";
+  public readonly platform = "telegram" as const;
+
   private bot: TelegramBot | null = null;
   private config: PandaConfig;
-  private messageCallback: ((msg: ChannelMessage) => Promise<void>) | null = null;
+  private messageHandler: ((msg: InboundMessage) => Promise<OutboundMessage | null>) | null = null;
   private allowedUsers: number[];
   private pairingCode: string | null = null;
+  private started = false;
 
   constructor(config: PandaConfig) {
     this.config = config;
-
-    // Merge: config.json allowed_users + locally paired users from .pandaclaw/paired-users.json
     const fromConfig = config.telegram?.allowed_users ?? [];
     const fromStorage = loadPairedUsers();
-    // Deduplicate
     this.allowedUsers = [...new Set([...fromConfig, ...fromStorage])];
+  }
+
+  public async start(): Promise<void> {
+    const token = this.config.telegram?.token ?? process.env.TELEGRAM_TOKEN ?? "";
+    if (!token) {
+      throw new Error("Missing Telegram token");
+    }
+
+    await this.setupPolling(token);
+
+    if (this.allowedUsers.length === 0) {
+      this.generatePairingCode();
+    } else {
+      console.log(purple(`\n  🐼 Telegram bot ready — ${this.allowedUsers.length} device(s) authorized.\n`));
+    }
+
+    this.setupPhotoHandler();
+    this.setupAudioHandlers();
+    this.setupTextHandler();
+    this.started = true;
+  }
+
+  public async stop(): Promise<void> {
+    if (this.bot) {
+      await this.bot.stopPolling();
+      this.bot = null;
+    }
+    this.started = false;
+  }
+
+  public async send(recipient: ChannelRecipient, message: OutboundMessage): Promise<void> {
+    if (!this.bot) throw new Error("Bot not initialized");
+    await this.bot.sendMessage(recipient.channelId, message.text, {
+      parse_mode: message.parseMode === "Markdown" ? "Markdown" : undefined,
+    });
+  }
+
+  public onMessage(handler: (msg: InboundMessage) => Promise<OutboundMessage | null>): void {
+    this.messageHandler = handler;
+  }
+
+  public health(): ChannelHealth {
+    return { ok: this.started && this.bot !== null };
   }
 
   private async setupPolling(token: string): Promise<void> {
@@ -117,18 +158,19 @@ export class TelegramAdapter implements ChannelAdapter {
     const codePart2 = Math.floor(100 + Math.random() * 900);
     this.pairingCode = `${codePart1}-${codePart2}`;
 
-    console.log(chalk.hex("#5b4d9e")("\n╭──────────────────────────────────────────────────────────╮"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.bold.hex("#e8dcf8")("🐼 Telegram Dynamic Device Pairing") + " ".repeat(21) + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("├──────────────────────────────────────────────────────────┤"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.yellow("🔑 Pairing Code: ") + chalk.bold.underline.hex("#e8dcf8")(this.pairingCode) + " ".repeat(24) + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("To authorize your Telegram account on this device:") + "      " + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("1. Open the bot chat in Telegram.") + "                       " + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("2. Send: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                              " + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Each person runs their own PandaClaw + pairs their own") + "  " + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Telegram account. One bot, many devices. ✅") + "             " + chalk.hex("#5b4d9e")(" │"));
-    console.log(chalk.hex("#5b4d9e")("╰──────────────────────────────────────────────────────────╯\n"));
+    const bar = purple("│");
+    console.log(purple("\n╭──────────────────────────────────────────────────────────╮"));
+    console.log(bar + " " + chalk.bold(lavender("🐼 Telegram Dynamic Device Pairing")) + " ".repeat(21) + " " + bar);
+    console.log(purple("├──────────────────────────────────────────────────────────┤"));
+    console.log(bar + " " + chalk.yellow("🔑 Pairing Code: ") + chalk.bold.underline(lavender(this.pairingCode)) + " ".repeat(24) + " " + bar);
+    console.log(bar + " " + " ".repeat(56) + " " + bar);
+    console.log(bar + " " + chalk.gray("To authorize your Telegram account on this device:") + "      " + bar);
+    console.log(bar + " " + chalk.gray("1. Open the bot chat in Telegram.") + "                       " + bar);
+    console.log(bar + " " + chalk.gray("2. Send: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                              " + bar);
+    console.log(bar + " " + " ".repeat(56) + " " + bar);
+    console.log(bar + " " + chalk.gray("Each person runs their own PandaClaw + pairs their own") + "  " + bar);
+    console.log(bar + " " + chalk.gray("Telegram account. One bot, many devices. ✅") + "             " + bar);
+    console.log(purple("╰──────────────────────────────────────────────────────────╯\n"));
   }
 
   private setupPhotoHandler(): void {
@@ -141,7 +183,7 @@ export class TelegramAdapter implements ChannelAdapter {
         const fileId = photos[photos.length - 1]!.file_id;
         const buffer = await this.downloadTelegramFile(fileId);
 
-        const channelMsg: ChannelMessage = {
+        const inbound: InboundMessage = {
           id: msg.message_id.toString(),
           senderId: msg.from!.id.toString(),
           senderName: msg.from!.first_name || "Unknown",
@@ -151,7 +193,7 @@ export class TelegramAdapter implements ChannelAdapter {
           chatId: msg.chat.id.toString(),
         };
 
-        await this.messageCallback!(channelMsg);
+        await this.messageHandler!(inbound);
       } catch (err: any) {
         await this.bot!.sendMessage(msg.chat.id, `❌ Error processing photo: ${err.message}`);
       }
@@ -188,7 +230,7 @@ export class TelegramAdapter implements ChannelAdapter {
 
         await this.bot!.sendMessage(msg.chat.id, `🎙 *Transcribed:* _"${text}"_`, { parse_mode: "Markdown" });
 
-        const channelMsg: ChannelMessage = {
+        const inbound: InboundMessage = {
           id: msg.message_id.toString(),
           senderId: msg.from!.id.toString(),
           senderName: msg.from!.first_name || "Unknown",
@@ -196,7 +238,7 @@ export class TelegramAdapter implements ChannelAdapter {
           chatId: msg.chat.id.toString(),
         };
 
-        await this.messageCallback!(channelMsg);
+        await this.messageHandler!(inbound);
       } catch (err: any) {
         await this.bot!.sendMessage(msg.chat.id, `❌ Error processing voice message: ${err.message}`);
       }
@@ -225,8 +267,8 @@ export class TelegramAdapter implements ChannelAdapter {
 
     if (codeInput === this.pairingCode) {
       this.allowedUsers.push(msg.from.id);
-      savePairedUser(msg.from.id);  // Save to .pandaclaw/paired-users.json (gitignored)
-      this.pairingCode = null; // Clear code after successful pairing
+      savePairedUser(msg.from.id);
+      this.pairingCode = null;
 
       console.log(chalk.green(`\n✓ Paired! Telegram @${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}) authorized on this device. 🐼\n`));
       await this.bot.sendMessage(
@@ -261,9 +303,9 @@ export class TelegramAdapter implements ChannelAdapter {
         return;
       }
 
-      if (!msg.text || !this.messageCallback) return;
+      if (!msg.text || !this.messageHandler) return;
 
-      const channelMsg: ChannelMessage = {
+      const inbound: InboundMessage = {
         id: msg.message_id.toString(),
         senderId: msg.from.id.toString(),
         senderName: msg.from.first_name || "Unknown",
@@ -271,45 +313,8 @@ export class TelegramAdapter implements ChannelAdapter {
         chatId: msg.chat.id.toString(),
       };
 
-      await this.messageCallback(channelMsg);
+      await this.messageHandler(inbound);
     });
-  }
-
-  public async initialize(): Promise<void> {
-    const token = this.config.telegram?.token ?? process.env.TELEGRAM_TOKEN ?? "";
-    if (!token) {
-      throw new Error("Missing Telegram token");
-    }
-
-    await this.setupPolling(token);
-
-    if (this.allowedUsers.length === 0) {
-      this.generatePairingCode();
-    } else {
-      console.log(chalk.hex("#5b4d9e")(`\n  🐼 Telegram bot ready — ${this.allowedUsers.length} device(s) authorized.\n`));
-    }
-
-    this.setupPhotoHandler();
-    this.setupAudioHandlers();
-    this.setupTextHandler();
-  }
-
-  public async stop(): Promise<void> {
-    if (this.bot) {
-      await this.bot.stopPolling();
-      this.bot = null;
-    }
-  }
-
-  public async sendMessage(chatId: string, text: string, options?: { parseMode?: "Markdown" | "HTML" }): Promise<void> {
-    if (!this.bot) throw new Error("Bot not initialized");
-    await this.bot.sendMessage(chatId, text, {
-      parse_mode: options?.parseMode === "Markdown" ? "Markdown" : undefined,
-    });
-  }
-
-  public onMessage(callback: (msg: ChannelMessage) => Promise<void>): void {
-    this.messageCallback = callback;
   }
 
   private isAllowed(userId: number): boolean {
@@ -330,7 +335,7 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   private async checkAuthorized(msg: any): Promise<boolean> {
-    if (!this.bot || !this.messageCallback) return false;
+    if (!this.bot || !this.messageHandler) return false;
     if (!msg.from || !this.isAllowed(msg.from.id)) {
       await this.sendPairingRequest(msg.chat.id);
       return false;

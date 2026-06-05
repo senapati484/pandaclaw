@@ -81,7 +81,7 @@ function syntaxCheck(filePath: string): string | null {
 export const fileReadTool: ToolDefinition = {
   name: "file_read",
   description: "Read any file anywhere on the device",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   execute: async (args) => {
     const filePath = resolvePath(args.path as string);
@@ -100,7 +100,7 @@ export const fileWriteTool: ToolDefinition = {
     "Write or create any file anywhere on the device. " +
     "For code files (.py, .sh, .ts, .js, .json) automatically runs a syntax check after writing " +
     "and returns a 'syntaxCheck' field so you know immediately if the code is valid.",
-  risky: false,
+  riskLevel: "ask",
   readOnly: false,
   execute: async (args) => {
     const filePath = resolvePath(args.path as string);
@@ -145,7 +145,7 @@ export const fileWriteTool: ToolDefinition = {
 export const listDirTool: ToolDefinition = {
   name: "list_dir",
   description: "List files and directories at any path on the device",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   execute: async (args) => {
     const inputPath = (args.path as string) || os.homedir();

@@ -380,10 +380,12 @@ export interface ToolContext {
   workspacePath: string;
 }
 
+export type RiskLevel = "safe" | "ask" | "deny";
+
 export interface ToolDefinition {
   name: string;
   description: string;
-  risky: boolean;
+  riskLevel: RiskLevel;
   readOnly: boolean;
   schema?: any;
   execute: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;

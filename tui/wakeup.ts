@@ -3,10 +3,9 @@ import chalk from "chalk";
 import figlet from "figlet";
 import { runCli } from "../modes/cli";
 import { acquireLock } from "../utils/process-lock.js";
+import { purple as SHADOW, lavender as FACE } from "../utils/brand.js";
 
 const BANNER_FONT = "ANSI Shadow";
-const SHADOW = chalk.hex('#5b4d9e');
-const FACE = chalk.hex('#e8dcf8');
 
 function printBannerWithShadow (ascii: string) {
     const bannerLines = ascii.replace(/\s+$/, "").split("\n");

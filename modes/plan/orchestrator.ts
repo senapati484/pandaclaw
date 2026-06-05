@@ -7,9 +7,7 @@ import type { Plan } from "../../modes/agent/types.js";
 import { generatePlan } from "./plan-generator.js";
 import { executePlan } from "./plan-executor.js";
 import { readConfig } from "../../ai/ai.config.js";
-
-const PANDA = chalk.hex("#5b4d9e");
-const FACE  = chalk.hex("#e8dcf8");
+import { purple as PANDA, lavender as FACE } from "../../utils/brand.js";
 
 function displayPlan(plan: Plan): void {
   console.log(PANDA(`\n📋 Plan for: "${plan.goal}"\n`));

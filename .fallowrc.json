@@ -1,4 +1,8 @@
 {
+  "entry": [
+    "bin/mcp-server.ts",
+    "mcp/server.ts"
+  ],
   "ignorePatterns": [
     "tests/**",
     "canvas/public/**",
@@ -7,10 +11,11 @@
     "modes/ask/ask.test.ts",
     "modes/plan/plan.test.ts",
     "modes/plan/plan-optimizer.ts",
-    "modes/plan/plan-validator.ts"
+    "modes/plan/plan-validator.ts",
+    "bin/**"
   ],
   "ignoreExports": [
-    { "file": "modes/agent/types.ts", "exports": ["Plan", "SessionMemory", "ValidationResult", "LLMResponse"] },
+    { "file": "modes/agent/types.ts", "exports": ["Plan", "SessionMemory", "ValidationResult", "LLMResponse", "RiskLevel", "ToolDefinition", "ToolContext", "ToolResult", "ToolRunResult", "ReactorSession", "AgentConfig", "MutationPlan", "ExecutionResult", "ReflectionResult", "CodebaseIndex", "CachedFile", "MemoryEntry", "PersistentMemory", "MemoryConsolidator", "MutationProposal", "ModelConfig", "ModelTaskType", "ModelProvider", "LLMResponse", "ActionLog", "ActionStatus", "ActionType", "MutationType", "isMutationType", "estimateMutationRisk", "defaultAgentConfig", "AskTask", "AskResult", "AskTaskType", "PlanStep", "PlanExecutionResult", "VisionContentType", "VisionResult", "VisionAction", "SpatialElement", "CodeFinding", "FileInfo", "ErrorPattern", "SuccessPattern", "ReflectionNote"] },
     { "file": "modes/plan/types.ts", "exports": ["Plan", "SessionMemory", "ValidationResult", "RiskLevel"] },
     { "file": "modes/agent/session-manager.ts", "exports": ["SessionManager", "resetSessionManager"] },
     { "file": "utils/logger.ts", "exports": ["getGlobalLogger", "resetGlobalLogger"] },
@@ -25,7 +30,29 @@
     { "file": "modes/agent/context-manager.ts", "exports": ["createContextManager"] },
     { "file": "modes/agent/model-selector.ts", "exports": ["modelSelector"] },
     { "file": "modes/ask/tool-schemas.ts", "exports": ["TOOL_SCHEMAS"] },
-    { "file": "utils/terminal-ui.ts", "exports": ["stripAnsi", "wrapLine", "drawBox"] }
+    { "file": "utils/terminal-ui.ts", "exports": ["stripAnsi", "wrapLine", "drawBox"] },
+    { "file": "tools/security-guard.ts", "exports": ["SecurityGuard", "DEFAULT_RISK"] },
+    { "file": "tools/index.ts", "exports": ["TOOLS", "getGuard", "getMCPHost", "initMCPFromConfig", "connectMCPServer", "disconnectMCPServer", "runTool", "ToolRunResult"] },
+    { "file": "mcp/protocol.ts", "exports": ["encodeMessage", "readMessages", "writeMessage", "isRequest", "isResponse", "isNotification", "ErrorCode", "MCPMethod", "LATEST_PROTOCOL_VERSION", "JsonRpcRequest", "JsonRpcResponse", "JsonRpcNotification", "ToolSchema", "CallToolParams", "CallToolResult", "InitializeParams", "InitializeResult", "MCPClientCapabilities", "MCPServerCapabilities", "StdioStream"] },
+    { "file": "mcp/host.ts", "exports": ["MCPHost", "getMCPHost", "MCPServerConfig", "MCPServerStatus"] },
+    { "file": "modes/gateway/channel-adapter.ts", "exports": ["ChannelAdapter", "InboundMessage", "OutboundMessage", "ChannelRecipient", "ChannelHealth", "Attachment", "Platform", "ChannelMessage", "adaptLegacyMessage"] },
+    { "file": "memory/rag.ts", "exports": ["getRAGStore", "setRAGStore", "closeRAGStore", "searchMemory", "indexText", "RAGStore", "TFIDFEmbedder", "XenovaEmbedder", "tryXenovaEmbedder", "EmbedderUnavailableError", "SearchResult", "RAGConfig"] },
+    { "file": "memory/vector-store.ts", "exports": ["RAGStore", "SearchResult", "VectorRow", "RAGStoreOptions"] },
+    { "file": "memory/embedders/tfidf.ts", "exports": ["TFIDFEmbedder"] },
+    { "file": "memory/embedders/xenova.ts", "exports": ["XenovaEmbedder", "tryXenovaEmbedder", "EmbedderUnavailableError"] },
+    { "file": "memory/embedders/interface.ts", "exports": ["Embedder", "cosineSimilarity"] },
+    { "file": "memory/tokenizer.ts", "exports": ["tokenize", "bigrams", "ngrams"] },
+    { "file": "tools/memory_recall.ts", "exports": ["memoryRecallTool"] },
+    { "file": "modes/agent/agent-types.ts", "exports": ["AgentDefinition", "ChannelBinding", "AgentIdentity", "AgentMessageHandler", "RoutingDecision", "AgentConfig", "AgentsConfigBlock", "AgentRegistryConfig"] },
+    { "file": "modes/agent/agent-registry.ts", "exports": ["AgentRegistry", "loadAgentsBlockFromConfigFile"] },
+    { "file": "modes/agent/agent-router.ts", "exports": ["AgentRouter"] },
+    { "file": "modes/agent/binding.ts", "exports": ["parseBinding", "matchBinding", "BindingType"] },
+    { "file": "modes/agent/multi-gateway.ts", "exports": ["MultiGateway", "AgentMessageHandler"] },
+    { "file": "cli/agents-cli.ts", "exports": ["agentsListCommand", "agentsExplainCommand"] },
+    { "file": "modes/doctor/checks.ts", "exports": ["runChecks", "CheckResult", "DoctorReport", "Severity"] },
+    { "file": "modes/doctor/fixer.ts", "exports": ["applyFixes", "FixResult", "FixHandler", "FixSummary"] },
+    { "file": "cli/doctor-cli.ts", "exports": ["doctorCommand", "DoctorOptions"] },
+    { "file": "utils/brand.ts", "exports": ["PANDA", "purple", "lavender", "banner"] }
   ],
   "usedClassMembers": [
     "isAvailable",
@@ -76,7 +103,36 @@
     "getSuccessPatternsFor",
     "getActionsByType",
     "approveAction",
-    "getAction"
+    "getAction",
+    "check",
+    "register",
+    "onMessage",
+    "broadcast",
+    "health",
+    "connect",
+    "connectServer",
+    "status",
+    "registeredTools",
+    "disconnect",
+    "hasServer",
+    "onNotification",
+    "platform",
+    "fingerprint",
+    "fit",
+    "embed",
+    "embedBatch",
+    "count",
+    "delete",
+    "ingestJSONL",
+    "purgeStaleEmbeddings",
+    "has",
+    "get",
+    "defaultAgent",
+    "upsert",
+    "setDefault",
+    "listAdapters",
+    "agentsForPlatform",
+    "explain"
   ],
   "duplicates": {
     "ignore": [

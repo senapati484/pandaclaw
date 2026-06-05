@@ -17,7 +17,7 @@ describe("Dynamic Skills Loader", () => {
 export const skill = {
   name: "test_dynamic_skill",
   description: "A dynamic skill for testing",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   execute: async (args) => {
     return { result: "dynamic_hello", value: args.value };
@@ -31,7 +31,7 @@ export const skill = {
 export const skill = {
   name: "test_dynamic_skill_with_schema",
   description: "A dynamic skill with schema for testing",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   schema: {
     type: "function",
@@ -70,7 +70,7 @@ export const skill = {
     const loaded = await loadDynamicSkills(process.cwd());
     expect(loaded.test_dynamic_skill).toBeDefined();
     expect(loaded.test_dynamic_skill!.description).toBe("A dynamic skill for testing");
-    expect(loaded.test_dynamic_skill!.risky).toBe(false);
+    expect(loaded.test_dynamic_skill!.riskLevel).toBe("safe");
 
     const res = await loaded.test_dynamic_skill!.execute({ value: 123 }, {} as any);
     expect(res).toEqual({ result: "dynamic_hello", value: 123 });

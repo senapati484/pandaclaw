@@ -72,6 +72,18 @@ program
     });
 
 program
+  .command("doctor")
+  .description("Diagnose local PandaClaw installation and optionally auto-fix issues")
+  .option("--fix", "Auto-repair fixable issues")
+  .option("--json", "Output report as JSON")
+  .option("--only <ids...>", "Run/fix only these check ids")
+  .action((opts: { fix?: boolean; json?: boolean; only?: string[] }) => {
+    import("./cli/doctor-cli.js").then(({ doctorCommand }) => {
+      doctorCommand({ fix: opts.fix, json: opts.json, only: opts.only });
+    });
+  });
+
+program
   .command("daemon")
   .description("Manage PandaClaw background daemon service")
   .argument("[action]", "Action: status (default), start, stop, restart, logs")
@@ -130,6 +142,32 @@ try {
 
 // Session commands
 import { getSessionManager } from "./modes/agent/session-manager.js";
+import { agentsListCommand, agentsExplainCommand } from "./cli/agents-cli.js";
+
+const agentsCmd = program
+  .command("agents")
+  .description("List configured multi-agents and their channel bindings");
+
+agentsCmd
+  .command("list")
+  .description("List all agents")
+  .option("--json", "Output as JSON")
+  .action((opts: { json?: boolean }) => {
+    agentsListCommand({ json: opts.json });
+  });
+
+agentsCmd
+  .command("explain")
+  .description("Explain which agent would handle a (platform, chatId) pair")
+  .requiredOption("--platform <name>", "Channel platform (telegram, slack, ...)")
+  .requiredOption("--chat <id>", "Chat ID or pattern")
+  .option("--json", "Output as JSON")
+  .action((opts: { platform: string; chat: string; json?: boolean }) => {
+    agentsExplainCommand({ platform: opts.platform, chatId: opts.chat, json: opts.json });
+  });
+
+// Default `pandaclaw agents` (no subcommand) => list
+agentsCmd.action(() => agentsListCommand());
 
 program
   .command("sessions")

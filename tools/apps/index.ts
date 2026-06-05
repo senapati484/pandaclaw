@@ -126,7 +126,7 @@ const appActionHandlers: Record<
 export const appControlTool: ToolDefinition = {
   name: "app_control",
   description: "Control native applications, services, settings, browsers, and inputs on the user's macOS device.",
-  risky: false, // pre-authorized for trusted paired users
+  riskLevel: "ask",
   readOnly: false,
   execute: async (args, context) => {
     const app = String(args.app ?? "").toLowerCase();

@@ -3,7 +3,7 @@ import type { ToolDefinition } from "../modes/agent/types.js";
 export const canvasControlTool: ToolDefinition = {
   name: "canvas_control",
   description: "Update the live Visual Canvas dashboard. Draw shapes, display HTML cards, or clear the canvas.",
-  risky: false,
+  riskLevel: "safe",
   readOnly: false,
   execute: async (args) => {
     const action = String(args.action ?? "");

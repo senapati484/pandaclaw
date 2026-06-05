@@ -84,7 +84,7 @@ async function searchDuckDuckGoScrape(query: string, maxResults: number): Promis
 export const webSearchTool: ToolDefinition = {
   name: "web_search",
   description: "Search the web for current information about a topic",
-  risky: false,
+  riskLevel: "safe",
   readOnly: true,
   execute: async (args, _ctx) => {
     const query = args.query as string;

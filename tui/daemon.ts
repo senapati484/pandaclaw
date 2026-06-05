@@ -6,6 +6,7 @@ import path from "path";
 import os from "os";
 import chalk from "chalk";
 import { execSync } from "child_process";
+import { purple } from "../utils/brand.js";
 
 const LABEL = "com.pandaclaw";
 const HOME = os.homedir();
@@ -55,7 +56,7 @@ export function startDaemon(): void {
   const { platform, servicePath, bunPath, serverPath } = getPlatformPaths();
   const projectDir = process.cwd();
 
-  console.log(chalk.hex("#5b4d9e")(`\n🐼 Installing background daemon...`));
+  console.log(purple(`\n🐼 Installing background daemon...`));
   console.log(chalk.gray(`  Bun Path:  ${bunPath}`));
   console.log(chalk.gray(`  Server:    ${serverPath}`));
   console.log(chalk.gray(`  Log Path:  ${LOG_FILE}`));
@@ -143,7 +144,7 @@ WantedBy=default.target`;
 
 export function stopDaemon(): void {
   const { platform, servicePath } = getPlatformPaths();
-  console.log(chalk.hex("#5b4d9e")(`\nStopping background daemon...`));
+  console.log(purple(`\nStopping background daemon...`));
 
   if (platform === "darwin") {
     try {
@@ -174,7 +175,7 @@ export function stopDaemon(): void {
 
 export function daemonStatus(): void {
   const { platform } = getPlatformPaths();
-  console.log(chalk.hex("#5b4d9e")(`\n🐼 PandaClaw Daemon Status:`));
+  console.log(purple(`\n🐼 PandaClaw Daemon Status:`));
 
   let isRunning = false;
   let pid = "N/A";
@@ -216,7 +217,7 @@ export function tailDaemonLogs(linesCount = 50): void {
     return;
   }
 
-  console.log(chalk.hex("#5b4d9e")(`\n📋 Tailing last ${linesCount} lines of ${LOG_FILE}:\n`));
+  console.log(purple(`\n📋 Tailing last ${linesCount} lines of ${LOG_FILE}:\n`));
   try {
     const raw = readFileSync(LOG_FILE, "utf8");
     const lines = raw.split("\n").filter(Boolean);

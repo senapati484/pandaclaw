@@ -68,6 +68,7 @@
     "@clack/prompts": "^1.4.0",
     "@openrouter/ai-sdk-provider": "^2.9.0",
     "@types/node-telegram-bot-api": "^0.64.14",
+    "@xenova/transformers": "^2.17.2",
     "ai": "^6.0.191",
     "chalk": "^5.6.2",
     "cheerio": "^1.2.0",

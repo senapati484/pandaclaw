@@ -1,8 +1,6 @@
 import chalk from "chalk";
 import { select, isCancel } from "@clack/prompts";
-
-const PANDA = chalk.hex("#5b4d9e");
-const FACE  = chalk.hex("#e8dcf8");
+import { purple as PANDA } from "../utils/brand.js";
 
 export async function runCli () {
     console.log(PANDA("\n🐼 PandaClaw CLI — Select a mode below:\n"));

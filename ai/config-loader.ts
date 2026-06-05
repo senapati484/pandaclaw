@@ -20,6 +20,8 @@ function findConfigPath(): string {
   throw new Error("config.json not found. Please run \"pandaclaw setup\" to configure your API keys.");
 }
 
+export { findConfigPath };
+
 export function readConfig(): PandaConfig {
   if (_config) return _config;
 

@@ -17,6 +17,7 @@ import { runTestsForChangedFiles } from "./test-runner";
 import { SessionManager, getSessionManager } from "./session-manager";
 import type { SessionData } from "./session-manager";
 import { stripAnsi, wrapLine, drawBox } from "../../utils/terminal-ui";
+import { purple as purpleTheme } from "../../utils/brand.js";
 
 class AgentOrchestrator {
   private session: ReactorSession | null = null;
@@ -559,8 +560,6 @@ export async function runAgentMode(): Promise<void> {
   });
 
   s.stop("Swarm execution completed");
-
-  const purpleTheme = chalk.hex('#5b4d9e');
 
   const executionLines = buildSwarmExecutionLines(result.tasks);
   console.log("");

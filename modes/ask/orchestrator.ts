@@ -9,9 +9,7 @@ import { runFastPath } from "./fast-path.js";
 import { runPandaMode } from "./panda-mode.js";
 import { readConfig } from "../../ai/ai.config.js";
 import { saveToMemory } from "../../memory/store.js";
-
-const PANDA = chalk.hex("#5b4d9e");
-const FACE  = chalk.hex("#e8dcf8");
+import { purple as PANDA, lavender as FACE } from "../../utils/brand.js";
 
 function streamAnswer(text: string): void {
   const words = text.split(" ");

@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { readConfig } from "../../ai/ai.config.js";
 import { classifyRoute } from "../ask/classifier.js";
 import { createHmac, timingSafeEqual } from "crypto";
+import { purple } from "../../utils/brand.js";
 
 function verifyGitHubSignature(rawBody: string, secret: string, signatureHeader: string): boolean {
   if (!signatureHeader) return false;
@@ -147,7 +148,7 @@ export async function processWebhook(
     requestConsent: async () => true, // Runs autonomously in background
   };
 
-  console.log(chalk.hex("#5b4d9e")(`\n🛜 [Webhook] Received "${source}" event. Executing via "${route}" route...`));
+  console.log(purple(`\n🛜 [Webhook] Received "${source}" event. Executing via "${route}" route...`));
 
   try {
     const answer = await runWebhookAgent(route, prompt, config, toolCtx);
