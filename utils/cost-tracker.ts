@@ -3,7 +3,7 @@
 
 import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
-import { getMemoryDir } from "../memory/store.js";
+import { getMemoryDir } from "./paths.js";
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "fs";
 import path from "path";
 

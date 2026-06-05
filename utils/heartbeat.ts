@@ -7,7 +7,7 @@ import os from "os";
 import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
 import { classifyRoute } from "../modes/ask/classifier.js";
-import { getMemoryDir } from "../memory/store.js";
+import { getMemoryDir } from "./paths.js";
 
 export interface HeartbeatRunEvent {
   timestamp: number;

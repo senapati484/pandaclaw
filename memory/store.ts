@@ -10,29 +10,8 @@ import os from "os";
 
 const MAX_ENTRIES = 200;
 
-export function getActiveWorkspace(): string {
-  if (process.env.PANDACLAW_TEST_WORKSPACE) {
-    return process.env.PANDACLAW_TEST_WORKSPACE;
-  }
-  if (process.env.NODE_ENV === "test") {
-    return "default";
-  }
-  const activeFile = path.join(os.homedir(), ".pandaclaw", "active_workspace.txt");
-  if (existsSync(activeFile)) {
-    try {
-      return readFileSync(activeFile, "utf8").trim() || "default";
-    } catch {}
-  }
-  return "default";
-}
-
-export function getMemoryDir(): string {
-  const active = getActiveWorkspace();
-  if (active === "default") {
-    return ".pandaclaw";
-  }
-  return path.join(os.homedir(), ".pandaclaw", "workspaces", active);
-}
+import { getActiveWorkspace, getMemoryDir } from "../utils/paths.js";
+export { getActiveWorkspace, getMemoryDir };
 
 export function getMemoryPath(): string {
   return path.join(getMemoryDir(), "memory.jsonl");

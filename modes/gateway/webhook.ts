@@ -37,6 +37,81 @@ function resolveTemplate(template: string, payload: any): string {
   });
 }
 
+export function buildWebhookPrompt(
+  source: string,
+  payload: any,
+  headers: Record<string, string>,
+  hookConfig: any
+): string {
+  if (hookConfig.prompt_template) {
+    return resolveTemplate(hookConfig.prompt_template, payload);
+  }
+
+  if (source === "github") {
+    const event = headers["x-github-event"] || "push";
+    const action = payload.action || "";
+    const repo = payload.repository?.full_name || "unknown-repo";
+    const sender = payload.sender?.login || "unknown-user";
+
+    if (event === "issues") {
+      const issueNum = payload.issue?.number;
+      const issueTitle = payload.issue?.title || "";
+      const issueBody = payload.issue?.body || "";
+      return `GitHub webhook event: issues ${action} in repo "${repo}" by user "${sender}".\nIssue #${issueNum}: "${issueTitle}"\nBody: "${issueBody}"\n\nPlease diagnose this issue, investigate the relevant repository files if needed, and suggest a resolution.`;
+    }
+
+    if (event === "pull_request") {
+      const prNum = payload.pull_request?.number;
+      const prTitle = payload.pull_request?.title || "";
+      return `GitHub webhook event: pull_request ${action} in repo "${repo}" by user "${sender}".\nPR #${prNum}: "${prTitle}"\nVerify the changes.`;
+    }
+
+    return `GitHub webhook event: "${event}" received in repo "${repo}" by user "${sender}".\nPayload: ${JSON.stringify(payload)}`;
+  }
+
+  if (source === "zapier") {
+    return `Zapier webhook event received.\nPayload: ${JSON.stringify(payload)}\nAnalyze and execute required actions.`;
+  }
+
+  // Custom / Generic webhook
+  return `Custom webhook event received from source "${source}".\nPayload: ${JSON.stringify(payload)}`;
+}
+
+export async function runWebhookAgent(
+  route: string,
+  prompt: string,
+  config: any,
+  toolCtx: any
+): Promise<string> {
+  if (route === "action") {
+    const { runToolAgent } = await import("../ask/tool-agent.js");
+    const res = await runToolAgent(prompt, config, toolCtx);
+    return res.answer;
+  }
+
+  if (route === "complex") {
+    const { runPandaMode } = await import("../ask/panda-mode.js");
+    const res = await runPandaMode({
+      id: crypto.randomUUID(),
+      type: "complex",
+      input: prompt,
+      conversationHistory: [],
+      createdAt: new Date(),
+    }, config);
+    return res.answer;
+  }
+
+  const { runFastPath } = await import("../ask/fast-path.js");
+  const res = await runFastPath({
+    id: crypto.randomUUID(),
+    type: "simple",
+    input: prompt,
+    conversationHistory: [],
+    createdAt: new Date(),
+  }, config);
+  return res.answer;
+}
+
 export async function processWebhook(
   source: string,
   payload: any,
@@ -61,33 +136,7 @@ export async function processWebhook(
   }
 
   // 1. Parse payload to build a prompt
-  let prompt = "";
-  if (hookConfig.prompt_template) {
-    prompt = resolveTemplate(hookConfig.prompt_template, payload);
-  } else if (source === "github") {
-    const event = headers["x-github-event"] || "push";
-    const action = payload.action || "";
-    const repo = payload.repository?.full_name || "unknown-repo";
-    const sender = payload.sender?.login || "unknown-user";
-
-    if (event === "issues") {
-      const issueNum = payload.issue?.number;
-      const issueTitle = payload.issue?.title || "";
-      const issueBody = payload.issue?.body || "";
-      prompt = `GitHub webhook event: issues ${action} in repo "${repo}" by user "${sender}".\nIssue #${issueNum}: "${issueTitle}"\nBody: "${issueBody}"\n\nPlease diagnose this issue, investigate the relevant repository files if needed, and suggest a resolution.`;
-    } else if (event === "pull_request") {
-      const prNum = payload.pull_request?.number;
-      const prTitle = payload.pull_request?.title || "";
-      prompt = `GitHub webhook event: pull_request ${action} in repo "${repo}" by user "${sender}".\nPR #${prNum}: "${prTitle}"\nVerify the changes.`;
-    } else {
-      prompt = `GitHub webhook event: "${event}" received in repo "${repo}" by user "${sender}".\nPayload: ${JSON.stringify(payload)}`;
-    }
-  } else if (source === "zapier") {
-    prompt = `Zapier webhook event received.\nPayload: ${JSON.stringify(payload)}\nAnalyze and execute required actions.`;
-  } else {
-    // Custom / Generic webhook
-    prompt = `Custom webhook event received from source "${source}".\nPayload: ${JSON.stringify(payload)}`;
-  }
+  const prompt = buildWebhookPrompt(source, payload, headers, hookConfig);
 
   // 2. Classify and execute prompt
   const route = classifyRoute(prompt);
@@ -100,34 +149,8 @@ export async function processWebhook(
 
   console.log(chalk.hex("#5b4d9e")(`\n🛜 [Webhook] Received "${source}" event. Executing via "${route}" route...`));
 
-  let answer = "";
   try {
-    if (route === "action") {
-      const { runToolAgent } = await import("../ask/tool-agent.js");
-      const res = await runToolAgent(prompt, config, toolCtx);
-      answer = res.answer;
-    } else if (route === "complex") {
-      const { runPandaMode } = await import("../ask/panda-mode.js");
-      const res = await runPandaMode({
-        id: crypto.randomUUID(),
-        type: "complex",
-        input: prompt,
-        conversationHistory: [],
-        createdAt: new Date(),
-      }, config);
-      answer = res.answer;
-    } else {
-      const { runFastPath } = await import("../ask/fast-path.js");
-      const res = await runFastPath({
-        id: crypto.randomUUID(),
-        type: "simple",
-        input: prompt,
-        conversationHistory: [],
-        createdAt: new Date(),
-      }, config);
-      answer = res.answer;
-    }
-
+    const answer = await runWebhookAgent(route, prompt, config, toolCtx);
     // 3. Dispatch results to the configured channel
     await dispatchWebhookResult(hookConfig, answer);
     return { success: true, answer };
