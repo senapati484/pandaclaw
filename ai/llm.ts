@@ -239,7 +239,7 @@ async function callLLMNonStream(options: LLMCallOptions, chain: any[]): Promise<
   let lastError: Error | null = null;
   for (const provider of chain) {
     try {
-      const result = await withTimeout<any>(`${provider.name}`, 15_000, (signal) =>
+      const result = await withTimeout<any>(`${provider.name}`, 30_000, (signal) =>
         provider.complete({
           messages: options.messages as LLMMessage[],
           tools: options.tools,
