@@ -132,4 +132,34 @@ describe("ProviderRegistry", () => {
     expect(fallbackAllChain[0]?.name).toBe("p1");
     expect(fallbackAllChain[1]?.name).toBe("p2");
   });
+
+  test("persists and restores cooldowns to/from disk", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const dirPath = path.join(process.cwd(), ".pandaclaw");
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    const filePath = path.join(dirPath, "provider_cooldowns.json");
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const reg1 = new ProviderRegistry();
+    reg1.register(new MockProvider("test-provider", true));
+    
+    // Set cooldown in first registry (this writes to disk)
+    reg1.setCooldown("test-provider", 5000);
+    expect(reg1.isCooledDown("test-provider")).toBe(false);
+
+    // Create a new registry instance. It should read from disk and inherit the cooldown.
+    const reg2 = new ProviderRegistry();
+    reg2.register(new MockProvider("test-provider", true));
+    expect(reg2.isCooledDown("test-provider")).toBe(false);
+
+    // Clean up
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  });
 });

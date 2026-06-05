@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 export interface LLMMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
@@ -51,6 +54,49 @@ export class ProviderRegistry {
   private providers = new Map<string, ProviderAdapter>();
   private fallbackOrder: string[] = [];
   private cooldowns = new Map<string, number>();
+  private cooldownsLoaded = false;
+
+  private loadCooldowns(): void {
+    try {
+      const filePath = path.join(process.cwd(), ".pandaclaw", "provider_cooldowns.json");
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        for (const [name, until] of Object.entries(data)) {
+          if (typeof until === "number") {
+            this.cooldowns.set(name, until);
+          }
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  private saveCooldowns(): void {
+    try {
+      const dirPath = path.join(process.cwd(), ".pandaclaw");
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      const filePath = path.join(dirPath, "provider_cooldowns.json");
+      const data: Record<string, number> = {};
+      for (const [name, until] of this.cooldowns.entries()) {
+        if (until > Date.now()) {
+          data[name] = until;
+        }
+      }
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  private ensureCooldownsLoaded(): void {
+    if (!this.cooldownsLoaded) {
+      this.loadCooldowns();
+      this.cooldownsLoaded = true;
+    }
+  }
 
   register(adapter: ProviderAdapter): void {
     this.providers.set(adapter.name, adapter);
@@ -72,15 +118,19 @@ export class ProviderRegistry {
   }
 
   setCooldown(name: string, durationMs: number): void {
+    this.ensureCooldownsLoaded();
     this.cooldowns.set(name, Date.now() + durationMs);
+    this.saveCooldowns();
   }
 
   isCooledDown(name: string): boolean {
+    this.ensureCooldownsLoaded();
     const until = this.cooldowns.get(name);
     return !until || Date.now() >= until;
   }
 
   getFallbackChain(preferred?: string): ProviderAdapter[] {
+    this.ensureCooldownsLoaded();
     const chain: ProviderAdapter[] = [];
     const seen = new Set<string>();
 
@@ -122,6 +172,7 @@ export class ProviderRegistry {
     this.providers.clear();
     this.fallbackOrder = [];
     this.cooldowns.clear();
+    this.cooldownsLoaded = false;
   }
 }
 
