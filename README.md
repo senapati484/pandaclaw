@@ -104,13 +104,19 @@ Environment variables override `config.json`:
 ## 🎮 Usage
 
 ```bash
-pandaclaw ask          # Interactive ask mode (3-route classifier)
+pandaclaw ask          # Quick answers, file ops, and shell commands (3-route classifier)
 pandaclaw agent        # Autonomous reactor loop with swarm support
-pandaclaw plan         # Goal → decompose → approve → execute
-pandaclaw dashboard    # Web dashboard at http://localhost:18789
-pandaclaw setup        # Configure API keys and providers
-pandaclaw sessions     # List, switch, and manage agent sessions
-pandaclaw wakeup       # Welcome menu
+pandaclaw plan         # Decompose, optimize, and execute goals step-by-step
+pandaclaw dashboard    # Start the Visual Canvas Web Dashboard (port 18789)
+pandaclaw setup        # Configure API keys and providers interactively
+pandaclaw daemon       # Manage background daemon service (start, stop, status, logs)
+pandaclaw sessions     # List, switch, show, and delete agent sessions
+pandaclaw cost         # Show persistent token consumption and cost analysis
+pandaclaw schedule     # Manage heartbeat schedules (list, add, run, pause, history)
+pandaclaw workspace    # Create, list, switch, and delete named workspaces
+pandaclaw skills       # Browse and install custom skills from marketplace
+pandaclaw webhook      # Manage incoming webhook configurations (add, list, remove)
+pandaclaw wakeup       # Launch the interactive welcome menu
 ```
 
 Via `bun` scripts directly:
@@ -120,7 +126,7 @@ bun run ask            # Interactive ask mode
 bun run dashboard      # Web dashboard
 bun run setup          # Configuration wizard
 bun run typecheck      # TypeScript type check (tsc --noEmit)
-bun test               # Run all 77 tests
+bun test               # Run all 110 tests
 ```
 
 ---
@@ -229,7 +235,9 @@ Sessions are fully persistent — you can resume any past session, view its acti
 `pandaclaw` includes a multi-channel gateway that routes messages from external platforms through the same 3-way classifier and tool agent:
 
 ```bash
-pandaclaw gateway      # Start all configured channels
+pandaclaw wakeup       # Choose "Telegram Bot" to start the Telegram Gateway
+# OR
+pandaclaw dashboard    # Start WebChat & Slack Gateway with visual web dashboard
 ```
 
 | Channel | Setup |
@@ -395,10 +403,13 @@ pandaclaw/
 │   ├── logger.ts                   # Structured JSONL logger with levels
 │   ├── terminal-ui.ts              # stripAnsi / wrapLine / drawBox helpers
 │   ├── path.ts                     # Path resolution utilities
+│   ├── paths.ts                    # Workspace paths resolver (circular dep breaker)
+│   ├── cost-tracker.ts             # Token cost tracker and estimator
+│   ├── heartbeat.ts                # Heartbeat cron scheduler engine
 │   └── process-lock.ts             # PID file lock (single instance guard)
 ├── types/
 │   └── shared.ts                   # Shared type definitions
-├── tests/                          # 77 unit tests across 15 files
+├── tests/                          # 110 unit tests across 21 files (including inline mode tests)
 │   ├── swarm.test.ts
 │   ├── session-manager.test.ts
 │   ├── provider-adapter.test.ts
@@ -410,7 +421,13 @@ pandaclaw/
 │   ├── gateway.test.ts
 │   ├── dynamic-loader.test.ts
 │   ├── app-control.test.ts
-│   └── logger.test.ts
+│   ├── logger.test.ts
+│   ├── cost-tracker.test.ts
+│   ├── heartbeat.test.ts
+│   ├── daemon.test.ts
+│   ├── webhook.test.ts
+│   ├── workspace.test.ts
+│   └── skills.test.ts
 └── skills/                         # Drop .ts/.js files here — auto-loaded at startup
 ```
 
@@ -419,14 +436,14 @@ pandaclaw/
 ## 🧪 Testing
 
 ```bash
-bun test                    # Run all 77 tests across 15 files
+bun test                    # Run all 110 tests across 21 files
 bun test --watch            # Watch mode
 bun test --verbose          # Show each test name and duration
 bun run typecheck           # TypeScript type check (tsc --noEmit)
-npx fallow                  # Code quality audit (dead code, duplication, complexity)
+bunx fallow                 # Code quality audit (dead code, duplication, complexity)
 ```
 
-Current metrics: **77 tests passing · 0 TypeScript errors · MI 90.7 (good) · 0 dead exports**
+Current metrics: **110 tests passing · 0 TypeScript errors · MI 90.7 (good) · 0 dead exports**
 
 ---
 
