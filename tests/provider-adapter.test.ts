@@ -104,4 +104,32 @@ describe("ProviderRegistry", () => {
     expect(result.content).toBe("response from test");
     expect(result.model).toBe("test");
   });
+
+  test("manages cooldowns correctly", () => {
+    const registry = new ProviderRegistry();
+    registry.register(new MockProvider("p1", true));
+    registry.register(new MockProvider("p2", true));
+    registry.setFallbackOrder(["p1", "p2"]);
+
+    // Initial state: not on cooldown
+    expect(registry.isCooledDown("p1")).toBe(true);
+
+    // Set cooldown
+    registry.setCooldown("p1", 10000);
+    expect(registry.isCooledDown("p1")).toBe(false);
+
+    // getFallbackChain should skip p1 (on cooldown) and return p2
+    const chain = registry.getFallbackChain("p1");
+    expect(chain.length).toBe(1);
+    expect(chain[0]?.name).toBe("p2");
+
+    // If all are on cooldown, it should fallback to returning all of them
+    registry.setCooldown("p2", 10000);
+    expect(registry.isCooledDown("p2")).toBe(false);
+
+    const fallbackAllChain = registry.getFallbackChain("p1");
+    expect(fallbackAllChain.length).toBe(2);
+    expect(fallbackAllChain[0]?.name).toBe("p1");
+    expect(fallbackAllChain[1]?.name).toBe("p2");
+  });
 });

@@ -50,6 +50,7 @@ export interface ProviderAdapter {
 export class ProviderRegistry {
   private providers = new Map<string, ProviderAdapter>();
   private fallbackOrder: string[] = [];
+  private cooldowns = new Map<string, number>();
 
   register(adapter: ProviderAdapter): void {
     this.providers.set(adapter.name, adapter);
@@ -70,24 +71,47 @@ export class ProviderRegistry {
     return Array.from(this.providers.values()).filter((p) => p.isAvailable());
   }
 
+  setCooldown(name: string, durationMs: number): void {
+    this.cooldowns.set(name, Date.now() + durationMs);
+  }
+
+  isCooledDown(name: string): boolean {
+    const until = this.cooldowns.get(name);
+    return !until || Date.now() >= until;
+  }
+
   getFallbackChain(preferred?: string): ProviderAdapter[] {
     const chain: ProviderAdapter[] = [];
     const seen = new Set<string>();
 
-    if (preferred && this.providers.has(preferred)) {
-      const p = this.providers.get(preferred)!;
-      if (p.isAvailable()) {
+    const addProvider = (name: string) => {
+      if (seen.has(name)) return;
+      const p = this.providers.get(name);
+      if (p && p.isAvailable()) {
         chain.push(p);
-        seen.add(preferred);
+        seen.add(name);
+      }
+    };
+
+    if (preferred && this.providers.has(preferred)) {
+      if (this.isCooledDown(preferred)) {
+        addProvider(preferred);
       }
     }
 
     for (const name of this.fallbackOrder) {
       if (seen.has(name)) continue;
-      const p = this.providers.get(name);
-      if (p && p.isAvailable()) {
-        chain.push(p);
-        seen.add(name);
+      if (!this.isCooledDown(name)) continue;
+      addProvider(name);
+    }
+
+    // Fallback if all are cooled down
+    if (chain.length === 0) {
+      if (preferred && this.providers.has(preferred)) {
+        addProvider(preferred);
+      }
+      for (const name of this.fallbackOrder) {
+        addProvider(name);
       }
     }
 
@@ -97,6 +121,7 @@ export class ProviderRegistry {
   clear(): void {
     this.providers.clear();
     this.fallbackOrder = [];
+    this.cooldowns.clear();
   }
 }
 

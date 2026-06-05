@@ -202,9 +202,26 @@ async function callLLMStream(
       return streamResponse;
     } catch (err: any) {
       lastError = err;
+      const errMsg = err.message || "";
       console.warn(
-        chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${(err.message || "")?.slice(0, 120)}. Trying next provider...\n`)
+        chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${errMsg.slice(0, 120)}. Trying next provider...\n`)
       );
+
+      const isRateLimit = err.status === 429 || 
+                          err.statusCode === 429 || 
+                          /429|rate limit|rate-limit/i.test(errMsg);
+      if (isRateLimit) {
+        let retryAfterMs = 60 * 1000; // default 1 minute
+        const match = errMsg.match(/retry-after:\s*(\d+)/i);
+        if (match && match[1]) {
+          const secs = parseInt(match[1], 10);
+          if (!isNaN(secs)) {
+            retryAfterMs = secs * 1000;
+          }
+        }
+        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000); // Max 10 minutes
+        globalRegistry.setCooldown(provider.name, retryAfterMs);
+      }
     }
   }
 
@@ -254,10 +271,26 @@ async function callLLMNonStream(options: LLMCallOptions, chain: any[]): Promise<
       return nonStreamResponse;
     } catch (err: any) {
       lastError = err;
-      const errMsg = err.message?.slice(0, 120) ?? "unknown error";
+      const errMsg = err.message || "";
       console.warn(
-        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg}. Trying next provider...\n`)
+        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg.slice(0, 120)}. Trying next provider...\n`)
       );
+
+      const isRateLimit = err.status === 429 || 
+                          err.statusCode === 429 || 
+                          /429|rate limit|rate-limit/i.test(errMsg);
+      if (isRateLimit) {
+        let retryAfterMs = 60 * 1000; // default 1 minute
+        const match = errMsg.match(/retry-after:\s*(\d+)/i);
+        if (match && match[1]) {
+          const secs = parseInt(match[1], 10);
+          if (!isNaN(secs)) {
+            retryAfterMs = secs * 1000;
+          }
+        }
+        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000); // Max 10 minutes
+        globalRegistry.setCooldown(provider.name, retryAfterMs);
+      }
     }
   }
 
