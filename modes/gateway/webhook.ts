@@ -37,7 +37,7 @@ function resolveTemplate(template: string, payload: any): string {
   });
 }
 
-export function buildWebhookPrompt(
+function buildWebhookPrompt(
   source: string,
   payload: any,
   headers: Record<string, string>,
@@ -77,7 +77,7 @@ export function buildWebhookPrompt(
   return `Custom webhook event received from source "${source}".\nPayload: ${JSON.stringify(payload)}`;
 }
 
-export async function runWebhookAgent(
+async function runWebhookAgent(
   route: string,
   prompt: string,
   config: any,

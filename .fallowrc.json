@@ -18,7 +18,7 @@
     { "file": "modes/plan/plan-generator.ts", "exports": ["PlanGenerator"] },
     { "file": "memory/store.ts", "exports": ["saveGraphRelation", "getActiveWorkspace", "getMemoryDir", "getMemoryPath", "getChatsPath", "getGraphPath", "getMarkdownPath", "getCompactedPath"] },
     { "file": "utils/heartbeat.ts", "exports": ["matchesCron"] },
-    { "file": "utils/cost-tracker.ts", "exports": ["SessionCostSummary"] },
+    { "file": "utils/cost-tracker.ts", "exports": ["SessionCostSummary", "CostEvent"] },
     { "file": "modes/ask/orchestrator.ts", "exports": ["AskOrchestrator"] },
     { "file": "tools/code-formatter.ts", "exports": ["detectFormatter", "formatFile", "formatCode"] },
     { "file": "modes/agent/test-runner.ts", "exports": ["detectTestRunner", "runTests"] },
