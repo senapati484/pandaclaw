@@ -62,7 +62,7 @@ async function tryProvider(
   if (!apiKey) return null;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second timeout for fast path
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout for fast path
 
   try {
     const res = await fetchWithRetry(`${apiBase}/chat/completions`, {
@@ -90,7 +90,7 @@ async function tryProvider(
   } catch (err: any) {
     clearTimeout(timeoutId);
     const isTimeout = err.name === "AbortError";
-    const errMsg = isTimeout ? "Request timed out after 5000ms" : err.message;
+    const errMsg = isTimeout ? "Request timed out after 10000ms" : err.message;
     throw new Error(errMsg);
   }
 }
