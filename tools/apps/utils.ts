@@ -1,7 +1,7 @@
 // tools/apps/utils.ts
 // Cross-platform process and execution utilities supporting macOS, Windows, and Linux
 
-import os from "os";
+import * as os from "os";
 import { exec, spawn } from "child_process";
 
 /**
