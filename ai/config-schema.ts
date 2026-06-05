@@ -88,6 +88,7 @@ const pandaConfigSchema = z.object({
     secret: z.string().optional().default(""),
     channel: z.enum(["telegram", "slack", "cli"]).default("telegram"),
     chatId: z.string().optional(),
+    prompt_template: z.string().optional(),
   })).optional().default([]),
 });
 

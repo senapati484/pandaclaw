@@ -186,4 +186,34 @@ export class MutationExecutor {
       );
     }
   }
+
+  /**
+   * Auto-commit the mutation to Git if the repository is initialized
+   */
+  async autoCommit(mutation: MutationProposal): Promise<void> {
+    const { existsSync } = await import("fs");
+    const { join } = await import("path");
+
+    // Don't commit shell command executions
+    if (mutation.type === "shell_command") return;
+
+    const gitDir = join(this.codebasePath, ".git");
+    if (!existsSync(gitDir)) {
+      return; // Git not initialized
+    }
+
+    const { $ } = await import("bun");
+    try {
+      // Add the file to git stage
+      await $`git -C ${this.codebasePath} add ${mutation.path}`;
+      
+      const commitMsg = `pandaclaw: [${mutation.type}] ${mutation.path}\n\nRationale: ${mutation.rationale || "No rationale provided"}`;
+      
+      // Commit the change
+      await $`git -C ${this.codebasePath} commit -m ${commitMsg}`;
+      console.log(chalk.gray(`  [git] Auto-committed: ${mutation.path}`));
+    } catch (err: any) {
+      // Git command failed, e.g. no changes to commit. Log silently.
+    }
+  }
 }

@@ -72,4 +72,29 @@ describe("CostTracker", () => {
     warnSpy.mockRestore();
     errSpy.mockRestore();
   });
+
+  test("persists cost history to jsonl and recalls it", () => {
+    process.env.PANDACLAW_TEST_WORKSPACE = "test-cost-tracker";
+    CostTracker.reset();
+
+    CostTracker.track("llama-3.3-70b-versatile", 10_000, 5_000);
+    CostTracker.track("qwen/qwen3-coder:free", 50_000, 20_000);
+
+    const history = CostTracker.getCostHistory();
+    expect(history.length).toBe(2);
+    expect(history[0]!.model).toBe("llama-3.3-70b-versatile");
+    expect(history[0]!.inputTokens).toBe(10_000);
+    expect(history[0]!.outputTokens).toBe(5_000);
+    expect(history[1]!.model).toBe("qwen/qwen3-coder:free");
+
+    // Clean up
+    const { getMemoryDir } = require("../memory/store.js");
+    const fs = require("fs");
+    const path = require("path");
+    const filePath = path.join(getMemoryDir(), "cost_history.jsonl");
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    delete process.env.PANDACLAW_TEST_WORKSPACE;
+  });
 });

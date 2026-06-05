@@ -34,6 +34,18 @@ describe("Heartbeat Scheduler & matchesCron", () => {
     expect(next.getHours()).toBe(8);
     expect(next.getMinutes()).toBe(0);
   });
+
+  test("matches alphabetical day and month names", () => {
+    const d = new Date("2026-06-05T12:00:00"); // June (6), Friday (5)
+    expect(matchesCron("* * * jun *", d)).toBe(true);
+    expect(matchesCron("* * * * fri", d)).toBe(true);
+    expect(matchesCron("* * * jun fri", d)).toBe(true);
+    expect(matchesCron("* * * may *", d)).toBe(false);
+    expect(matchesCron("* * * * mon", d)).toBe(false);
+    expect(matchesCron("* * * may,jun *", d)).toBe(true);
+    expect(matchesCron("* * * * mon-fri", d)).toBe(true);
+    expect(matchesCron("* * * * sat-sun", d)).toBe(false);
+  });
 });
 
 describe("HeartbeatEngine", () => {
@@ -95,5 +107,47 @@ describe("HeartbeatEngine", () => {
 
     engine.pause(task.id, true);
     expect(engine.getTasks()[0]?.enabled).toBe(true);
+  });
+
+  test("logs runs and reads history", async () => {
+    writeSpy.mockRestore();
+    existsSpy.mockRestore();
+    readSpy.mockRestore();
+
+    process.env.PANDACLAW_TEST_WORKSPACE = "test-heartbeat";
+    const engine = new HeartbeatEngine();
+    
+    const { getMemoryDir } = require("../memory/store.js");
+    const path = require("path");
+    const fs = require("fs");
+    
+    const memoryDir = getMemoryDir();
+    if (!fs.existsSync(memoryDir)) {
+      fs.mkdirSync(memoryDir, { recursive: true });
+    }
+    const filePath = path.join(memoryDir, "schedules_history.jsonl");
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const event = {
+      timestamp: Date.now(),
+      taskId: "t123",
+      taskName: "Mock Task",
+      cron: "* * * * *",
+      prompt: "hello",
+      status: "success",
+      response: "mock response"
+    };
+    fs.writeFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
+
+    const history = engine.getScheduleHistory();
+    expect(history.length).toBe(1);
+    expect(history[0]!.taskId).toBe("t123");
+    expect(history[0]!.status).toBe("success");
+
+    // Clean up
+    fs.unlinkSync(filePath);
+    delete process.env.PANDACLAW_TEST_WORKSPACE;
   });
 });

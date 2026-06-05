@@ -53,7 +53,7 @@ describe("Webhook Ingestion", () => {
     expect(result.error).toContain("No configured webhook handler found");
   });
 
-  test("processes GitHub issue opened event successfully", async () => {
+  test("processes GitHub issue opened event successfully with signature", async () => {
     const payload = {
       action: "opened",
       repository: { full_name: "senapati484/pandaclaw" },
@@ -65,11 +65,65 @@ describe("Webhook Ingestion", () => {
       }
     };
 
+    const rawBody = JSON.stringify(payload);
+    const crypto = require("crypto");
+    const signature = "sha256=" + crypto.createHmac("sha256", "test-secret").update(rawBody).digest("hex");
+
     const headers = {
-      "x-github-event": "issues"
+      "x-github-event": "issues",
+      "x-hub-signature-256": signature
     };
 
-    const result = await processWebhook("github", payload, headers);
+    const result = await processWebhook("github", payload, headers, rawBody);
+    expect(result.success).toBe(true);
+    expect(result.answer).toContain("diagnostic result");
+  });
+
+  test("rejects GitHub issue with invalid signature", async () => {
+    const payload = {
+      action: "opened"
+    };
+    const rawBody = JSON.stringify(payload);
+    const headers = {
+      "x-github-event": "issues",
+      "x-hub-signature-256": "sha256=invalid-signature-hash-value"
+    };
+
+    const result = await processWebhook("github", payload, headers, rawBody);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("signature verification failed");
+  });
+
+  test("processes custom webhook with template resolving successfully", async () => {
+    configSpy.mockReturnValue({
+      providers: {
+        groq: { api_key: "test-groq-key", api_base: "https://api.groq.com" },
+        openrouter: { api_key: "test-or-key", api_base: "https://openrouter.ai" },
+        nvidia_nim: { api_key: "test-nim-key", api_base: "https://nim" },
+        ollama: { api_key: "test-ollama-key", api_base: "https://ollama" }
+      },
+      routing: {
+        fast_path: { provider: "groq", model: "llama-3.1-8b-instant", temperature: 0.1, maxTokens: 2048 },
+        panda_mode: { provider: "openrouter", model: "qwen/qwen3-coder:free", temperature: 0.1, maxTokens: 8192 },
+        planning: { provider: "openrouter", model: "qwen/qwen3-next-80b-a3b-instruct:free", temperature: 0.2, maxTokens: 4096 },
+        fallback_chain: ["groq"]
+      },
+      webhooks: [
+        {
+          source: "gitlab",
+          channel: "cli",
+          prompt_template: "GitLab event: {object_kind} in {project.name}. Title: {attributes.title}"
+        }
+      ]
+    } as any);
+
+    const payload = {
+      object_kind: "merge_request",
+      project: { name: "pandaclaw" },
+      attributes: { title: "Refactor webhook" }
+    };
+
+    const result = await processWebhook("gitlab", payload, {});
     expect(result.success).toBe(true);
     expect(result.answer).toContain("diagnostic result");
   });

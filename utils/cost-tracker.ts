@@ -3,6 +3,9 @@
 
 import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
+import { getMemoryDir } from "../memory/store.js";
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from "fs";
+import path from "path";
 
 const PRICING: Record<string, { input: number; output: number }> = {
   "llama-3.3-70b-versatile":     { input: 0.59,  output: 0.79  },  // Groq
@@ -16,6 +19,14 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "meta/llama-3.3-70b-instruct": { input: 0.39,  output: 0.39  },  // NIM
   "qwen3:0.6b":                  { input: 0.00,  output: 0.00  },  // Ollama local
 };
+
+export interface CostEvent {
+  timestamp: number;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
 
 export interface SessionCostSummary {
   inputTokens: number;
@@ -50,7 +61,40 @@ class CostTrackerImpl {
     const cost = ((inputTokens * price.input) + (outputTokens * price.output)) / 1_000_000;
     this.sessionCostUsd += cost;
 
+    // Persist cost event to file
+    try {
+      const memoryDir = getMemoryDir();
+      if (!existsSync(memoryDir)) {
+        mkdirSync(memoryDir, { recursive: true });
+      }
+      const filePath = path.join(memoryDir, "cost_history.jsonl");
+      const event: CostEvent = {
+        timestamp: Date.now(),
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd: cost,
+      };
+      appendFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
+    } catch (err: any) {
+      // Fail-safe silently
+    }
+
     this.checkBudgetLimits();
+  }
+
+  public getCostHistory(): CostEvent[] {
+    try {
+      const filePath = path.join(getMemoryDir(), "cost_history.jsonl");
+      if (!existsSync(filePath)) return [];
+      const content = readFileSync(filePath, "utf8");
+      return content
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as CostEvent);
+    } catch {
+      return [];
+    }
   }
 
   public getSessionSummary(): SessionCostSummary {
@@ -74,6 +118,17 @@ class CostTrackerImpl {
 
   private getPricing(model: string): { input: number; output: number } {
     const cleanModel = model.toLowerCase();
+
+    // Check dynamic config.json pricing overrides first
+    try {
+      const config = readConfig();
+      const customPricing = (config as any).pricing || {};
+      for (const [key, val] of Object.entries(customPricing)) {
+        if (cleanModel === key.toLowerCase() || cleanModel.includes(key.toLowerCase()) || key.toLowerCase().includes(cleanModel)) {
+          return val as { input: number; output: number };
+        }
+      }
+    } catch {}
 
     // Check exact matches
     for (const [key, val] of Object.entries(PRICING)) {

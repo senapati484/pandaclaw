@@ -1,10 +1,13 @@
-import { test, expect } from "bun:test";
+import { test, expect, spyOn } from "bun:test";
 import { ActionTracker } from "./action-tracker";
 import { SessionMemoryManager } from "./session-memory";
 import { CodebaseContextManager } from "./context-manager";
 import { ActionPlanner } from "./action-planner";
 import { ReflectionEngine } from "./reflection-engine";
 import type { MutationProposal, ActionLog } from "./types";
+import { MutationExecutor } from "./mutation-executor.js";
+import { existsSync, mkdirSync, rmSync } from "fs";
+import path from "path";
 
 test("ActionTracker: log and retrieve actions", () => {
   const tracker = new ActionTracker();
@@ -290,4 +293,40 @@ test("ActionTracker: clear for new session", () => {
   tracker.clear();
 
   expect(tracker.getActions().length).toBe(0);
+});
+
+test("MutationExecutor: git autoCommit works when .git exists", async () => {
+  const testDir = path.join(process.cwd(), ".pandaclaw-test-git");
+  if (existsSync(testDir)) {
+    rmSync(testDir, { recursive: true, force: true });
+  }
+  mkdirSync(testDir, { recursive: true });
+  mkdirSync(path.join(testDir, ".git"), { recursive: true });
+
+  const executor = new MutationExecutor(testDir, {
+    codebasePath: testDir,
+    approvalThresholds: { autoExecuteMutationLimit: 5 },
+    tools: { allowShellExecution: true }
+  } as any);
+
+  // Mock Bun shell execution $ to prevent running real git commands
+  const shellSpy = spyOn(Bun, "$").mockImplementation((() => Promise.resolve({ exitCode: 0 })) as any);
+
+  const mutation: MutationProposal = {
+    id: "m-1",
+    type: "file_create",
+    path: "test.txt",
+    rationale: "test commit",
+    content: "hello",
+    estimatedRisk: "low",
+    requiresApproval: false
+  };
+
+  await executor.autoCommit(mutation);
+
+  expect(shellSpy).toHaveBeenCalled();
+  shellSpy.mockRestore();
+
+  // Clean up
+  rmSync(testDir, { recursive: true, force: true });
 });

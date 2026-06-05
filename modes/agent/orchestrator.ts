@@ -251,6 +251,11 @@ class AgentOrchestrator {
         console.log(chalk.green(`✓ Mutation succeeded`));
         this.tracker.updateStatus(action.id, "executed");
 
+        // Git auto-commit if validation passes
+        if (this.executor) {
+          await this.executor.autoCommit(mutation);
+        }
+
         // Post-mutation: snapshot for undo/redo
         if (this.actionHistory && mutation.type !== "shell_command" && mutation.type !== "folder_delete") {
           this.actionHistory.snapshotBefore(mutation.path, mutation.type, mutation.rationale);

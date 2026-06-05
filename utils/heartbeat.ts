@@ -1,12 +1,24 @@
 // utils/heartbeat.ts
 // Cron-based Heartbeat Engine for running proactive agent tasks.
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from "fs";
 import path from "path";
 import os from "os";
 import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
 import { classifyRoute } from "../modes/ask/classifier.js";
+import { getMemoryDir } from "../memory/store.js";
+
+export interface HeartbeatRunEvent {
+  timestamp: number;
+  taskId: string;
+  taskName: string;
+  cron: string;
+  prompt: string;
+  status: "success" | "failed";
+  response?: string;
+  error?: string;
+}
 
 const HOME = os.homedir();
 const PANDA_DIR = path.join(HOME, ".pandaclaw");
@@ -32,6 +44,19 @@ export function matchesCron(cron: string, date: Date): boolean {
   const dom = date.getDate();
   const month = date.getMonth() + 1; // 1-12
   const dow = date.getDay(); // 0-6 (Sunday is 0)
+
+  const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+  let monthField = fields[3]!.toLowerCase();
+  MONTH_NAMES.forEach((name, idx) => {
+    monthField = monthField.replace(new RegExp(name, "g"), (idx + 1).toString());
+  });
+
+  let dowField = fields[4]!.toLowerCase();
+  DAY_NAMES.forEach((name, idx) => {
+    dowField = dowField.replace(new RegExp(name, "g"), idx.toString());
+  });
 
   const matchField = (field: string, val: number, minVal: number, maxVal: number): boolean => {
     if (field === "*") return true;
@@ -62,8 +87,8 @@ export function matchesCron(cron: string, date: Date): boolean {
     matchField(fields[0]!, min, 0, 59) &&
     matchField(fields[1]!, hour, 0, 23) &&
     matchField(fields[2]!, dom, 1, 31) &&
-    matchField(fields[3]!, month, 1, 12) &&
-    matchField(fields[4]!, dow, 0, 6)
+    matchField(monthField, month, 1, 12) &&
+    matchField(dowField, dow, 0, 6)
   );
 }
 
@@ -230,11 +255,64 @@ export class HeartbeatEngine {
       task.lastRun = Date.now();
       this.save();
 
+      // Save schedule run event to file
+      try {
+        const memoryDir = getMemoryDir();
+        if (!existsSync(memoryDir)) {
+          require("fs").mkdirSync(memoryDir, { recursive: true });
+        }
+        const filePath = path.join(memoryDir, "schedules_history.jsonl");
+        const event: HeartbeatRunEvent = {
+          timestamp: Date.now(),
+          taskId: task.id,
+          taskName: task.name,
+          cron: task.cron,
+          prompt: task.prompt,
+          status: "success",
+          response: answer.length > 500 ? answer.slice(0, 500) + "..." : answer,
+        };
+        appendFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
+      } catch {}
+
       // Dispatch results to output channel
       await this.dispatchResult(task, answer);
     } catch (err: any) {
       console.error(chalk.red(`  ❌ Task "${task.name}" failed: ${err.message}`));
+
+      // Save failed run event to file
+      try {
+        const memoryDir = getMemoryDir();
+        if (!existsSync(memoryDir)) {
+          require("fs").mkdirSync(memoryDir, { recursive: true });
+        }
+        const filePath = path.join(memoryDir, "schedules_history.jsonl");
+        const event: HeartbeatRunEvent = {
+          timestamp: Date.now(),
+          taskId: task.id,
+          taskName: task.name,
+          cron: task.cron,
+          prompt: task.prompt,
+          status: "failed",
+          error: err.message,
+        };
+        appendFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
+      } catch {}
+
       await this.dispatchResult(task, `❌ Scheduled task "${task.name}" failed: ${err.message}`);
+    }
+  }
+
+  public getScheduleHistory(): HeartbeatRunEvent[] {
+    try {
+      const filePath = path.join(getMemoryDir(), "schedules_history.jsonl");
+      if (!existsSync(filePath)) return [];
+      const content = readFileSync(filePath, "utf8");
+      return content
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as HeartbeatRunEvent);
+    } catch {
+      return [];
     }
   }
 

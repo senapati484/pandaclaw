@@ -53,3 +53,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .pandaclaw/events.jsonl
 .pandaclaw/response-cache.json
 .pandaclaw/sessions/
+.pandaclaw/cost_history.jsonl
+.pandaclaw/schedules_history.jsonl

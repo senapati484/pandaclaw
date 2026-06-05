@@ -189,9 +189,61 @@ program
   });
 
 program
+  .command("cost")
+  .description("Show persistent API token consumption and USD costs analysis")
+  .action(async () => {
+    const { CostTracker } = await import("./utils/cost-tracker.js");
+    const { default: chalk } = await import("chalk");
+
+    const history = CostTracker.getCostHistory();
+    if (history.length === 0) {
+      console.log(chalk.yellow("\nNo cost history recorded yet. Cost tracking begins on your first LLM query."));
+      return;
+    }
+
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalCost = 0;
+    const modelBreakdown: Record<string, { count: number; input: number; output: number; cost: number }> = {};
+
+    for (const event of history) {
+      totalInput += event.inputTokens;
+      totalOutput += event.outputTokens;
+      totalCost += event.costUsd;
+
+      const m = event.model;
+      if (!modelBreakdown[m]) {
+        modelBreakdown[m] = { count: 0, input: 0, output: 0, cost: 0 };
+      }
+      modelBreakdown[m].count++;
+      modelBreakdown[m].input += event.inputTokens;
+      modelBreakdown[m].output += event.outputTokens;
+      modelBreakdown[m].cost += event.costUsd;
+    }
+
+    console.log(chalk.cyan("\n🐼 PandaClaw Cost Analysis & Statistics"));
+    console.log(chalk.gray("========================================="));
+    console.log(`  Lifetime Queries:   ${chalk.bold(history.length)}`);
+    console.log(`  Total Input Tokens: ${chalk.bold(totalInput.toLocaleString())}`);
+    console.log(`  Total Output Tokens:${chalk.bold(totalOutput.toLocaleString())}`);
+    console.log(`  Total Tokens:       ${chalk.bold((totalInput + totalOutput).toLocaleString())}`);
+    console.log(`  Lifetime Cost:      ${chalk.bold.green(`$${totalCost.toFixed(6)}`)}`);
+    console.log(`  Avg Cost / Query:   ${chalk.bold.yellow(`$${(totalCost / history.length).toFixed(6)}`)}`);
+
+    console.log(chalk.cyan("\n📊 Cost Breakdown by Model:"));
+    for (const [model, stats] of Object.entries(modelBreakdown)) {
+      console.log(`  ● ${chalk.bold(model)}`);
+      console.log(`      Queries: ${stats.count}`);
+      console.log(`      Tokens:  ${(stats.input + stats.output).toLocaleString()} (in: ${stats.input.toLocaleString()}, out: ${stats.output.toLocaleString()})`);
+      console.log(`      Cost:    ${chalk.green(`$${stats.cost.toFixed(6)}`)}`);
+    }
+    console.log();
+  });
+
+program
   .command("schedule")
   .description("Manage PandaClaw heartbeat schedules")
-  .argument("[action]", "Action: list (default), add, remove, run, pause, resume")
+  .argument("[action]", "Action: list (default), add, remove, run, pause, resume, history")
   .argument("[arg1]", "Cron expression for add, or ID for remove/run/pause/resume")
   .argument("[arg2]", "Prompt / task description for add")
   .option("-n, --name <name>", "Task name", "Scheduled Task")
@@ -283,8 +335,34 @@ program
         await engine.runTask(task);
         break;
       }
+      case "history": {
+        const history = engine.getScheduleHistory();
+        if (history.length === 0) {
+          console.log("No scheduled task execution history found.");
+          return;
+        }
+        console.log("\n⏰ Scheduled Task Run History (Last 20):");
+        console.log(chalk.gray("=================================================================================="));
+        const lastRuns = history.slice(-20).reverse();
+        for (const run of lastRuns) {
+          const time = new Date(run.timestamp).toLocaleString();
+          const statusText = run.status === "success" 
+            ? chalk.green("SUCCESS") 
+            : chalk.bold.red("FAILED");
+          console.log(`  ● [${time}] ${chalk.bold(run.taskName)} (ID: ${run.taskId}) → ${statusText}`);
+          console.log(`      prompt: "${run.prompt}"`);
+          if (run.status === "success" && run.response) {
+            console.log(`      result: ${chalk.gray(run.response.slice(0, 150))}`);
+          }
+          if (run.status === "failed" && run.error) {
+            console.log(`      error:  ${chalk.red(run.error)}`);
+          }
+          console.log();
+        }
+        break;
+      }
       default:
-        console.log(`Unknown schedule action: ${cmd}. Use: list, add, remove, run, pause, resume`);
+        console.log(`Unknown schedule action: ${cmd}. Use: list, add, remove, run, pause, resume, history`);
     }
   });
 

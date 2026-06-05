@@ -4,11 +4,44 @@
 import chalk from "chalk";
 import { readConfig } from "../../ai/ai.config.js";
 import { classifyRoute } from "../ask/classifier.js";
+import { createHmac, timingSafeEqual } from "crypto";
+
+function verifyGitHubSignature(rawBody: string, secret: string, signatureHeader: string): boolean {
+  if (!signatureHeader) return false;
+  if (!signatureHeader.startsWith("sha256=")) return false;
+
+  const expectedSignature = signatureHeader.slice(7);
+  const computedSignature = createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+
+  try {
+    return timingSafeEqual(
+      Buffer.from(computedSignature, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resolveTemplate(template: string, payload: any): string {
+  return template.replace(/\{([^}]+)\}/g, (match, pathStr) => {
+    const keys = pathStr.trim().split(".");
+    let current = payload;
+    for (const key of keys) {
+      if (current === null || current === undefined) return "";
+      current = current[key];
+    }
+    return current !== undefined && current !== null ? String(current) : "";
+  });
+}
 
 export async function processWebhook(
   source: string,
   payload: any,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  rawBody?: string
 ): Promise<{ success: boolean; answer?: string; error?: string }> {
   const config = readConfig();
   const webhooks = config.webhooks || [];
@@ -18,9 +51,20 @@ export async function processWebhook(
     return { success: false, error: `No configured webhook handler found for source: "${source}"` };
   }
 
+  // Verify signature if secret is configured for GitHub webhook
+  if (source === "github" && hookConfig.secret) {
+    // Find x-hub-signature-256 case-insensitively
+    const signatureHeader = headers["x-hub-signature-256"] || headers["X-Hub-Signature-256"] || "";
+    if (!verifyGitHubSignature(rawBody || "", hookConfig.secret, signatureHeader)) {
+      return { success: false, error: "GitHub signature verification failed" };
+    }
+  }
+
   // 1. Parse payload to build a prompt
   let prompt = "";
-  if (source === "github") {
+  if (hookConfig.prompt_template) {
+    prompt = resolveTemplate(hookConfig.prompt_template, payload);
+  } else if (source === "github") {
     const event = headers["x-github-event"] || "push";
     const action = payload.action || "";
     const repo = payload.repository?.full_name || "unknown-repo";

@@ -151,14 +151,20 @@ async function handleApiCanvas(req: Request): Promise<Response> {
 
 async function handleWebhookPost(source: string, req: Request): Promise<Response> {
   try {
-    const payload = await req.json();
+    const rawBody = await req.text();
+    let payload: any = {};
+    if (rawBody.trim()) {
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {}
+    }
     const headers: Record<string, string> = {};
     req.headers.forEach((val, key) => {
       headers[key] = val;
     });
 
     const { processWebhook } = await import("../modes/gateway/webhook.js");
-    const result = await processWebhook(source, payload, headers);
+    const result = await processWebhook(source, payload, headers, rawBody);
     
     if (result.success) {
       return new Response(JSON.stringify({ success: true, answer: result.answer }), {
