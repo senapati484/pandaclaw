@@ -76,6 +76,13 @@ function resolveProviderConfig(config: PandaConfig, providerName: string): { api
     }
   }
 
+  if (!model) {
+    if (providerName === "groq") model = "llama-3.3-70b-versatile";
+    else if (providerName === "openrouter") model = "google/gemini-2.5-flash";
+    else if (providerName === "nvidia_nim") model = "meta/llama-3.1-70b-instruct";
+    else if (providerName === "ollama") model = "qwen3-coder";
+  }
+
   return {
     apiBase: prov.api_base || "",
     apiKey: prov.api_key || "",
