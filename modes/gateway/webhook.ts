@@ -4,7 +4,7 @@
 import chalk from "chalk";
 import { readConfig } from "../../ai/ai.config.js";
 import { classifyRoute } from "../ask/classifier.js";
-import { createHmac, timingSafeEqual } from "crypto";
+import crypto, { createHmac, timingSafeEqual } from "crypto";
 import { purple } from "../../utils/brand.js";
 
 function verifyGitHubSignature(rawBody: string, secret: string, signatureHeader: string): boolean {
