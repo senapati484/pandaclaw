@@ -1,6 +1,6 @@
 {
   "name": "pandaclaw",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A deliberate, reasoning-first, and vision-native personal AI assistant built on Bun.",
   "module": "index.ts",
   "type": "module",
