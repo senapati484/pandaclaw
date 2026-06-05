@@ -4,6 +4,7 @@
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
+import { globalRegistry } from "../../ai/providers/adapter.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -100,8 +101,8 @@ export async function runPandaMode(
   const groqKey = config.providers.groq.api_key;
   const orKey = config.providers.openrouter.api_key;
 
-  // If no OpenRouter key, fall back to fast path
-  if (!orKey) {
+  // If no OpenRouter key or OpenRouter is on cooldown, fall back to fast path
+  if (!orKey || !globalRegistry.isCooledDown("openrouter")) {
     const { runFastPath } = await import("./fast-path.js");
     return runFastPath(task, config);
   }
@@ -163,6 +164,22 @@ export async function runPandaMode(
       break; // Success — stop trying fallbacks
     } catch (err: any) {
       console.warn(`[panda-mode] ${pandaModel} failed: ${err.message?.slice(0, 80)}`);
+      const errMsg = err.message || "";
+      const isRateLimit = err.status === 429 || 
+                          err.statusCode === 429 || 
+                          /429|rate limit|rate-limit/i.test(errMsg);
+      if (isRateLimit) {
+        let retryAfterMs = 60 * 1000;
+        const match = errMsg.match(/retry-after:\s*(\d+)/i);
+        if (match && match[1]) {
+          const secs = parseInt(match[1], 10);
+          if (!isNaN(secs)) {
+            retryAfterMs = secs * 1000;
+          }
+        }
+        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000);
+        globalRegistry.setCooldown("openrouter", retryAfterMs);
+      }
     }
   }
 
@@ -182,7 +199,7 @@ export async function runPandaMode(
   let verified = false;
   let verifiedAnswer = finalAnswer;
 
-  if (groqKey) {
+  if (groqKey && globalRegistry.isCooledDown("groq")) {
     const verification = await verifyAnswer(
       task.input,
       finalAnswer,
