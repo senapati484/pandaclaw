@@ -17,6 +17,11 @@ const PORT = 18789;
 const gateway = new Gateway();
 gateway.start(["webchat"]);
 
+// Start Heartbeat Scheduler
+import { HeartbeatEngine } from "../utils/heartbeat.js";
+const heartbeat = new HeartbeatEngine();
+heartbeat.start();
+
 // Broadcast helper for logs
 const activeWebSockets = new Set<any>();
 export function broadcastLog(log: any) {
@@ -144,6 +149,35 @@ async function handleApiCanvas(req: Request): Promise<Response> {
   });
 }
 
+async function handleWebhookPost(source: string, req: Request): Promise<Response> {
+  try {
+    const payload = await req.json();
+    const headers: Record<string, string> = {};
+    req.headers.forEach((val, key) => {
+      headers[key] = val;
+    });
+
+    const { processWebhook } = await import("../modes/gateway/webhook.js");
+    const result = await processWebhook(source, payload, headers);
+    
+    if (result.success) {
+      return new Response(JSON.stringify({ success: true, answer: result.answer }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } else {
+      return new Response(JSON.stringify({ success: false, error: result.error }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch (err: any) {
+    return new Response(JSON.stringify({ success: false, error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 const server = Bun.serve({
   port: PORT,
   fetch(req, server) {
@@ -159,6 +193,12 @@ const server = Bun.serve({
     // Static files routing
     const staticRes = handleStaticFile(url.pathname);
     if (staticRes) return staticRes;
+
+    // Webhook Ingestion Route
+    if (url.pathname.startsWith("/webhook/") && req.method === "POST") {
+      const source = url.pathname.slice(9);
+      return handleWebhookPost(source, req);
+    }
 
     // WebChat Endpoint (non-streaming - backward compatible)
     if (url.pathname === "/api/message" && req.method === "POST") {

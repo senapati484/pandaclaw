@@ -74,6 +74,21 @@ const pandaConfigSchema = z.object({
   slack: slackSchema,
   github: githubSchema,
   agent: agentConfigSchema,
+  cost_guard: z.object({
+    session_limit_usd: z.number().nonnegative().default(0.50),
+    warn_at_usd: z.number().nonnegative().default(0.25),
+    action: z.enum(["warn", "pause"]).default("warn"),
+  }).optional().default({
+    session_limit_usd: 0.50,
+    warn_at_usd: 0.25,
+    action: "warn"
+  }),
+  webhooks: z.array(z.object({
+    source: z.string(),
+    secret: z.string().optional().default(""),
+    channel: z.enum(["telegram", "slack", "cli"]).default("telegram"),
+    chatId: z.string().optional(),
+  })).optional().default([]),
 });
 
 export type ValidatedPandaConfig = z.infer<typeof pandaConfigSchema>;

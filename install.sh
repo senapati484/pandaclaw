@@ -123,6 +123,16 @@ else
   ok "Bun $(bun --version) installed"
 fi
 
+# Minimum Bun version check (>= 1.3.3)
+BUN_VER="$(bun --version 2>/dev/null || echo '0.0.0')"
+BUN_MAJOR="$(echo "$BUN_VER" | cut -d. -f1)"
+BUN_MINOR="$(echo "$BUN_VER" | cut -d. -f2)"
+BUN_PATCH="$(echo "$BUN_VER" | cut -d. -f3)"
+if [ "$BUN_MAJOR" -lt 1 ] || { [ "$BUN_MAJOR" -eq 1 ] && [ "$BUN_MINOR" -lt 3 ]; } || \
+   { [ "$BUN_MAJOR" -eq 1 ] && [ "$BUN_MINOR" -eq 3 ] && [ "$BUN_PATCH" -lt 3 ]; }; then
+  fail "Bun >= 1.3.3 required (found $BUN_VER). Upgrade: curl -fsSL https://bun.sh/install | bash"
+fi
+
 # Ensure bun bin is in PATH for the rest of the script
 BUN_BIN="$(dirname "$(command -v bun)")"
 case ":$PATH:" in
@@ -192,6 +202,14 @@ if [ ! -f "$GLOBAL_CONFIG" ]; then
   cp "$INSTALL_DIR/config.json" "$GLOBAL_CONFIG"
   muted "Default config → ~/.pandaclaw/config.json"
 fi
+
+# Scaffold skills/ directory for user-defined custom tools
+SKILLS_DIR="$HOME/.pandaclaw/skills"
+if [ ! -d "$SKILLS_DIR" ]; then
+  mkdir -p "$SKILLS_DIR"
+  muted "Skills folder created → ~/.pandaclaw/skills/"
+fi
+
 ok "Ready to configure"
 
 # ── 7. Verify ─────────────────────────────────────────────────────────────────
@@ -209,7 +227,7 @@ say "${GR}   ╔═════════════════════�
 say "${GR}   ║        🎉   All Set!    🎉       ║${R}"
 say "${GR}   ╠══════════════════════════════════════════╣${R}"
 say "${GR}   ║${R}  ${CY}PandaClaw ${B}${NEW_VER}${R}${GR}                        ║${R}"
-say "${GR}   ║${R}  ${D}Pipeline:$(printf '%s' "$NEW_VER" | wc -c | tr -d ' ')93 tests • 0 type errors${GR}          ║${R}"
+say "${GR}   ║${R}  ${D}77 tests • 0 type errors • MI 90.7${GR}          ║${R}"
 say "${GR}   ║${R}  ${D}Location: $INSTALL_DIR${GR}  ║${R}"
 say "${GR}   ╚══════════════════════════════════════════╝${R}"
 say ""

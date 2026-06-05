@@ -6,10 +6,53 @@ import type { MemoryEntry, PersistentMemory } from "../modes/agent/types.js";
 import type { PandaConfig } from "../ai/ai.config.js";
 import { callLLM } from "../ai/llm.js";
 
-const MEMORY_PATH = ".pandaclaw/memory.jsonl";
-const CHATS_PATH = ".pandaclaw/chats.jsonl";
-const GRAPH_PATH = ".pandaclaw/graph_memory.json";
+import os from "os";
+
 const MAX_ENTRIES = 200;
+
+export function getActiveWorkspace(): string {
+  if (process.env.PANDACLAW_TEST_WORKSPACE) {
+    return process.env.PANDACLAW_TEST_WORKSPACE;
+  }
+  if (process.env.NODE_ENV === "test") {
+    return "default";
+  }
+  const activeFile = path.join(os.homedir(), ".pandaclaw", "active_workspace.txt");
+  if (existsSync(activeFile)) {
+    try {
+      return readFileSync(activeFile, "utf8").trim() || "default";
+    } catch {}
+  }
+  return "default";
+}
+
+export function getMemoryDir(): string {
+  const active = getActiveWorkspace();
+  if (active === "default") {
+    return ".pandaclaw";
+  }
+  return path.join(os.homedir(), ".pandaclaw", "workspaces", active);
+}
+
+export function getMemoryPath(): string {
+  return path.join(getMemoryDir(), "memory.jsonl");
+}
+
+export function getChatsPath(): string {
+  return path.join(getMemoryDir(), "chats.jsonl");
+}
+
+export function getGraphPath(): string {
+  return path.join(getMemoryDir(), "graph_memory.json");
+}
+
+export function getMarkdownPath(): string {
+  return path.join(getMemoryDir(), "KNOWLEDGE_GRAPH.md");
+}
+
+export function getCompactedPath(): string {
+  return path.join(getMemoryDir(), "COMPACTED_MEMORY.md");
+}
 
 export interface GraphRelation {
   subject: string;
@@ -19,7 +62,7 @@ export interface GraphRelation {
 }
 
 function ensureDir(): void {
-  const dir = path.dirname(MEMORY_PATH);
+  const dir = getMemoryDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -43,15 +86,15 @@ export function saveChatMessage(chatId: string, role: "user" | "assistant", cont
     timestamp: Date.now(),
   };
   const line = JSON.stringify(entry) + "\n";
-  writeFileSync(CHATS_PATH, line, { flag: "a", encoding: "utf8" });
+  writeFileSync(getChatsPath(), line, { flag: "a", encoding: "utf8" });
 }
 
 export function loadChatHistory(chatId: string, limit = 20): Array<{ role: "user" | "assistant"; content: string }> {
   ensureDir();
-  if (!existsSync(CHATS_PATH)) return [];
+  if (!existsSync(getChatsPath())) return [];
 
   try {
-    const text = readFileSync(CHATS_PATH, "utf8");
+    const text = readFileSync(getChatsPath(), "utf8");
     const lines = text.split("\n").filter((l) => l.trim());
     const history: ChatMessage[] = [];
 
@@ -78,9 +121,9 @@ export function loadChatHistory(chatId: string, limit = 20): Array<{ role: "user
 export function saveGraphRelation(relation: Omit<GraphRelation, "timestamp">): void {
   ensureDir();
   let relations: GraphRelation[] = [];
-  if (existsSync(GRAPH_PATH)) {
+  if (existsSync(getGraphPath())) {
     try {
-      const data = JSON.parse(readFileSync(GRAPH_PATH, "utf8"));
+      const data = JSON.parse(readFileSync(getGraphPath(), "utf8"));
       if (Array.isArray(data.relations)) {
         relations = data.relations;
       }
@@ -102,7 +145,7 @@ export function saveGraphRelation(relation: Omit<GraphRelation, "timestamp">): v
     timestamp: Date.now(),
   });
 
-  writeFileSync(GRAPH_PATH, JSON.stringify({ relations }), "utf8");
+  writeFileSync(getGraphPath(), JSON.stringify({ relations }), "utf8");
   syncGraphToMarkdown(relations);
 }
 
@@ -125,7 +168,7 @@ export function parseAndSaveGraphRelations(text: string): number {
 
 
 function syncGraphToMarkdown(relations: GraphRelation[]): void {
-  const markdownPath = ".pandaclaw/KNOWLEDGE_GRAPH.md";
+  const markdownPath = getMarkdownPath();
   if (relations.length === 0) {
     writeFileSync(markdownPath, "# 🐼 PandaClaw Knowledge Graph\n\nNo semantic relations recorded yet.", "utf8");
     return;
@@ -151,10 +194,10 @@ function syncGraphToMarkdown(relations: GraphRelation[]): void {
 }
 
 export function recallRelevantRelations(query: string, limit = 5): string[] {
-  if (!existsSync(GRAPH_PATH)) return [];
+  if (!existsSync(getGraphPath())) return [];
 
   try {
-    const data = JSON.parse(readFileSync(GRAPH_PATH, "utf8"));
+    const data = JSON.parse(readFileSync(getGraphPath(), "utf8"));
     const relations: GraphRelation[] = data.relations || [];
     if (relations.length === 0) return [];
 
@@ -200,7 +243,7 @@ export function recallRelevantRelations(query: string, limit = 5): string[] {
 export function loadMemory(): PersistentMemory {
   ensureDir();
 
-  const graphPath = path.join(path.dirname(MEMORY_PATH), "KNOWLEDGE_GRAPH.md");
+  const graphPath = getMarkdownPath();
   const graphFacts: MemoryEntry[] = [];
   if (existsSync(graphPath)) {
     try {
@@ -215,7 +258,7 @@ export function loadMemory(): PersistentMemory {
     } catch {}
   }
 
-  if (!existsSync(MEMORY_PATH)) {
+  if (!existsSync(getMemoryPath())) {
     return {
       sessionCount: 0,
       lastSeen: Date.now(),
@@ -225,7 +268,7 @@ export function loadMemory(): PersistentMemory {
     };
   }
 
-  const text = readFileSync(MEMORY_PATH, "utf8");
+  const text = readFileSync(getMemoryPath(), "utf8");
   const lines = text.split("\n").filter((l) => l.trim());
 
   let entries: MemoryEntry[] = [];
@@ -252,17 +295,17 @@ export function saveToMemory(entry: MemoryEntry): void {
 
   const line = JSON.stringify(entry) + "\n";
 
-  const existing = existsSync(MEMORY_PATH)
-    ? readFileSync(MEMORY_PATH, "utf8")
+  const existing = existsSync(getMemoryPath())
+    ? readFileSync(getMemoryPath(), "utf8")
     : "";
 
   const lines = existing.split("\n").filter((l) => l.trim());
 
   if (lines.length >= MAX_ENTRIES) {
     const pruned = lines.slice(lines.length - MAX_ENTRIES + 1);
-    writeFileSync(MEMORY_PATH, pruned.join("\n") + "\n" + line, "utf8");
+    writeFileSync(getMemoryPath(), pruned.join("\n") + "\n" + line, "utf8");
   } else {
-    writeFileSync(MEMORY_PATH, existing + line, "utf8");
+    writeFileSync(getMemoryPath(), existing + line, "utf8");
   }
 }
 
@@ -288,11 +331,11 @@ export function recallRelevant(
 
 export async function pruneAndCompactChats(chatId: string, keepLimit = 12, config: PandaConfig): Promise<void> {
   ensureDir();
-  if (!existsSync(CHATS_PATH)) return;
+  if (!existsSync(getChatsPath())) return;
 
   let allMessages: ChatMessage[] = [];
   try {
-    const text = readFileSync(CHATS_PATH, "utf8");
+    const text = readFileSync(getChatsPath(), "utf8");
     const lines = text.split("\n").filter((l) => l.trim());
     for (const line of lines) {
       try {
@@ -338,7 +381,7 @@ Do not include any other conversational text or markdown formatting.`;
     parseAndSaveGraphRelations(response);
 
     // Also append a human-readable summary to COMPACTED_MEMORY.md
-    const compactedPath = ".pandaclaw/COMPACTED_MEMORY.md";
+    const compactedPath = getCompactedPath();
     const timestamp = new Date().toLocaleString();
     const appendText = `\n### Compacted Memory (${timestamp})\n${response}\n`;
     writeFileSync(compactedPath, appendText, { flag: "a", encoding: "utf8" });
@@ -355,6 +398,6 @@ Do not include any other conversational text or markdown formatting.`;
 
   // Write back to chats.jsonl
   const newText = updatedMessages.map(m => JSON.stringify(m)).join("\n") + "\n";
-  writeFileSync(CHATS_PATH, newText, "utf8");
+  writeFileSync(getChatsPath(), newText, "utf8");
 }
 

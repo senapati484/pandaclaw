@@ -169,6 +169,13 @@ async function callWithTools(
       }
 
       const data = await res.json() as any;
+
+      // Track cost
+      const finalInputTokens = data.usage?.prompt_tokens ?? Math.ceil(JSON.stringify(body.messages).length / 4);
+      const finalOutputTokens = data.usage?.completion_tokens ?? Math.ceil((data.choices?.[0]?.message?.content || "").length / 4);
+      const { CostTracker } = await import("../../utils/cost-tracker.js");
+      CostTracker.track(p.model, finalInputTokens, finalOutputTokens);
+
       return { data, provider: p.name, hadTools: p.withTools };
     } catch (err: any) {
       clearTimeout(timeoutId);

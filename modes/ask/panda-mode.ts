@@ -76,6 +76,13 @@ FIXED: <corrected answer>   — if something is missing or wrong`;
     if (verifyRes.ok) {
       const verifyData = (await verifyRes.json()) as LLMResponse;
       const verdict = verifyData.choices[0]?.message?.content ?? "";
+
+      // Cost Guard tracking
+      const finalInputTokens = (verifyData.usage as any)?.prompt_tokens ?? Math.ceil(verifyPrompt.length / 4);
+      const finalOutputTokens = (verifyData.usage as any)?.completion_tokens ?? Math.ceil(verdict.length / 4);
+      const { CostTracker } = await import("../../utils/cost-tracker.js");
+      CostTracker.track(fastModel, finalInputTokens, finalOutputTokens);
+
       const verified = verdict.startsWith("PASS");
       const verifiedAnswer = verified ? answer : verdict.replace(/^FIXED:\s*/i, "").trim();
       return { verified, answer: verifiedAnswer };
@@ -144,7 +151,14 @@ export async function runPandaMode(
 
       const reasonData = (await reasonRes.json()) as LLMResponse;
       rawResponse = reasonData.choices[0]?.message?.content ?? "";
-      tokensUsed = reasonData.usage?.total_tokens ?? 0;
+
+      // Cost Guard tracking
+      const finalInputTokens = (reasonData.usage as any)?.prompt_tokens ?? Math.ceil(JSON.stringify(reasonMessages).length / 4);
+      const finalOutputTokens = (reasonData.usage as any)?.completion_tokens ?? Math.ceil(rawResponse.length / 4);
+      const { CostTracker } = await import("../../utils/cost-tracker.js");
+      CostTracker.track(pandaModel, finalInputTokens, finalOutputTokens);
+
+      tokensUsed = reasonData.usage?.total_tokens ?? (finalInputTokens + finalOutputTokens);
       reasonSucceeded = true;
       break; // Success — stop trying fallbacks
     } catch (err: any) {

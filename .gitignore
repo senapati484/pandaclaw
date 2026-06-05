@@ -2,6 +2,9 @@
 node_modules
 package-lock.json
 
+# temporary scratch / debug files
+scratch/
+
 # output
 out
 dist

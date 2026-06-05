@@ -10,7 +10,11 @@ import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.j
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
-  usage?: { total_tokens: number };
+  usage?: {
+    total_tokens: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
 }
 
 /**
@@ -54,7 +58,7 @@ async function tryProvider(
   maxTokens: number,
   temperature: number,
   extraHeaders: Record<string, string> = {}
-): Promise<{ data: LLMResponse; provider: string } | null> {
+): Promise<{ data: LLMResponse; provider: string; model: string } | null> {
   if (!apiKey) return null;
 
   const controller = new AbortController();
@@ -82,7 +86,7 @@ async function tryProvider(
       throw err;
     }
 
-    return { data: (await res.json()) as LLMResponse, provider: apiBase };
+    return { data: (await res.json()) as LLMResponse, provider: apiBase, model };
   } catch (err: any) {
     clearTimeout(timeoutId);
     const isTimeout = err.name === "AbortError";
@@ -167,10 +171,16 @@ export async function runFastPath(
         ? "ollama"
         : "nvidia_nim";
 
+      // Track cost
+      const finalInputTokens = data.usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
+      const finalOutputTokens = data.usage?.completion_tokens ?? Math.ceil(answer.length / 4);
+      const { CostTracker } = await import("../../utils/cost-tracker.js");
+      CostTracker.track(result.model, finalInputTokens, finalOutputTokens);
+
       return {
         answer,
         taskType: "simple",
-        tokensUsed: data.usage?.total_tokens ?? 0,
+        tokensUsed: data.usage?.total_tokens ?? (finalInputTokens + finalOutputTokens),
         provider: providerLabel,
         durationMs: Date.now() - start,
         verified: false,

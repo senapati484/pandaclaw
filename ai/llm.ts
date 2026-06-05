@@ -139,6 +139,7 @@ async function callLLMStream(
     try {
       let fullContent = "";
       const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+      let parsedUsage: any = null;
 
       await withTimeout(`${provider.name} stream`, 30_000, (signal) =>
         streamCompletion(
@@ -149,6 +150,9 @@ async function callLLMStream(
           (chunk) => {
             if (chunk.type === "text" && chunk.content) {
               fullContent += chunk.content;
+            }
+            if (chunk.usage) {
+              parsedUsage = chunk.usage;
             }
             if (chunk.type === "tool_call" && chunk.toolName) {
               toolCalls.push({
@@ -183,6 +187,12 @@ async function callLLMStream(
         ],
         model: provConfig.model,
       };
+
+      // Cost Guard tracking
+      const finalInputTokens = parsedUsage?.prompt_tokens ?? Math.ceil(JSON.stringify(options.messages).length / 4);
+      const finalOutputTokens = parsedUsage?.completion_tokens ?? Math.ceil((fullContent || "").length / 4);
+      const { CostTracker } = await import("../utils/cost-tracker.js");
+      CostTracker.track(provConfig.model, finalInputTokens, finalOutputTokens);
 
       if (options.useCache !== false && fullContent) {
         const cache = getCache();
@@ -229,6 +239,12 @@ async function callLLMNonStream(options: LLMCallOptions, chain: any[]): Promise<
         usage: result.usage,
         model: result.model,
       };
+
+      // Cost Guard tracking
+      const finalInputTokens = result.usage?.prompt_tokens ?? Math.ceil(JSON.stringify(options.messages).length / 4);
+      const finalOutputTokens = result.usage?.completion_tokens ?? Math.ceil((result.content || "").length / 4);
+      const { CostTracker } = await import("../utils/cost-tracker.js");
+      CostTracker.track(result.model, finalInputTokens, finalOutputTokens);
 
       if (options.useCache !== false && result.content) {
         const cache = getCache();

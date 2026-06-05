@@ -143,10 +143,12 @@ export async function runAskMode(): Promise<void> {
 
         process.stdout.write("\x1b[2K\r");
         console.log();
+        const { CostTracker } = await import("../../utils/cost-tracker.js");
+        const costBadge = CostTracker.getBadgeText();
         if (route === "action" || route === "complex") {
-          console.log(PANDA(`  🐼 ${route} mode · ${result.durationMs}ms · ${result.provider}${result.badgeInfo}`));
+          console.log(PANDA(`  🐼 ${route} mode · ${result.durationMs}ms · ${result.provider}${result.badgeInfo}${costBadge}`));
         } else {
-          console.log(chalk.gray(`  ⚡ fast · ${result.durationMs}ms · ${result.provider}`));
+          console.log(chalk.gray(`  ⚡ fast · ${result.durationMs}ms · ${result.provider}${costBadge}`));
         }
         console.log();
         process.stdout.write(FACE("PandaClaw: "));

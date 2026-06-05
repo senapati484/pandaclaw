@@ -5,6 +5,11 @@ export interface StreamChunk {
   toolArgs?: string;
   toolCallId?: string;
   error?: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export type StreamHandler = (chunk: StreamChunk) => void;
@@ -22,6 +27,11 @@ function parseStreamLine(line: string, onChunk: StreamHandler): void {
 
   try {
     const parsed = JSON.parse(data);
+    
+    if (parsed.usage) {
+      onChunk({ type: "done", usage: parsed.usage });
+    }
+
     const delta = parsed.choices?.[0]?.delta;
     if (!delta) return;
 
@@ -68,6 +78,7 @@ export async function streamCompletion(
       temperature: options?.temperature ?? 0.1,
       max_tokens: options?.max_tokens,
       stream: true,
+      stream_options: { include_usage: true },
     }),
     signal: options?.signal,
   });

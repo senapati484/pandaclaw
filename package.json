@@ -12,16 +12,17 @@
     "package.json",
     "tsconfig.json",
     "config.json",
+    "install.sh",
     "ai",
     "canvas",
-    "fs",
     "memory",
     "modes",
-    "sandbox",
     "tools",
     "tui",
+    "types",
     "utils",
-    "vision"
+    "vision",
+    "skills"
   ],
   "scripts": {
     "start": "bun run index.ts",

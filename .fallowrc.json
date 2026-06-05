@@ -16,7 +16,9 @@
     { "file": "utils/logger.ts", "exports": ["getGlobalLogger", "resetGlobalLogger"] },
     { "file": "ai/providers/adapter.ts", "exports": ["ProviderRegistry"] },
     { "file": "modes/plan/plan-generator.ts", "exports": ["PlanGenerator"] },
-    { "file": "memory/store.ts", "exports": ["saveGraphRelation"] },
+    { "file": "memory/store.ts", "exports": ["saveGraphRelation", "getActiveWorkspace", "getMemoryDir", "getMemoryPath", "getChatsPath", "getGraphPath", "getMarkdownPath", "getCompactedPath"] },
+    { "file": "utils/heartbeat.ts", "exports": ["matchesCron"] },
+    { "file": "utils/cost-tracker.ts", "exports": ["SessionCostSummary"] },
     { "file": "modes/ask/orchestrator.ts", "exports": ["AskOrchestrator"] },
     { "file": "tools/code-formatter.ts", "exports": ["detectFormatter", "formatFile", "formatCode"] },
     { "file": "modes/agent/test-runner.ts", "exports": ["detectTestRunner", "runTests"] },
@@ -80,7 +82,10 @@
     "ignore": [
       "modes/agent/reflection-engine.ts",
       "ai/providers/nvidia-adapter.ts",
-      "ai/providers/openrouter-adapter.ts"
+      "ai/providers/openrouter-adapter.ts",
+      "modes/gateway/webhook.ts",
+      "utils/heartbeat.ts",
+      "tui/daemon.ts"
     ]
   },
   "health": {
@@ -88,6 +93,7 @@
     "maxCognitive": 40,
     "maxCrap": 610.0,
     "ignore": [
+      "index.ts",
       "tools/apps/index.ts",
       "ai/config-overrides.ts",
       "tools/code-exec.ts",
@@ -101,4 +107,3 @@
     ]
   }
 }
-

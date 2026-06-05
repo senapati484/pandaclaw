@@ -21,10 +21,19 @@ export const TOOLS: Record<string, ToolDefinition> = {
 };
 
 import { loadDynamicSkills } from "./dynamic-loader.js";
+import path from "path";
+import os from "os";
 
 export async function initDynamicSkills(workspacePath: string): Promise<void> {
   const dynamicTools = await loadDynamicSkills(workspacePath);
   for (const [name, tool] of Object.entries(dynamicTools)) {
+    TOOLS[name] = tool;
+  }
+
+  // Load global user-level skills
+  const globalSkillsDir = path.join(os.homedir(), ".pandaclaw");
+  const globalTools = await loadDynamicSkills(globalSkillsDir);
+  for (const [name, tool] of Object.entries(globalTools)) {
     TOOLS[name] = tool;
   }
 }

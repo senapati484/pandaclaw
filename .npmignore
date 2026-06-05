@@ -1,0 +1,27 @@
+# .npmignore — files excluded from npm publish
+# Keep the published package lean: only ship runtime src
+
+# Dev tooling
+.fallowrc.json
+.github/
+.claude/
+.pandaclaw/
+scratch/
+node_modules/
+
+# Tests
+tests/
+modes/**/*.test.ts
+modes/**/test/
+
+# Dev docs and scratch
+*.md
+!README.md
+
+# Config overrides and secrets
+.env*
+*.pem
+*.log
+*.lcov
+coverage/
+*.tsbuildinfo

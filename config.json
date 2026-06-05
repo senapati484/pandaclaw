@@ -78,12 +78,10 @@
       "tsconfig.json"
     ]
   },
-  "github": {
-    "app_id": "3905611",
-    "app_client_id": "Iv23litqPgCUrnfX90U",
-    "installation_id": "",
-    "pem_path": ".pandaclaw/github-app.pem",
-    "bot_name": "pandaclawbot",
-    "bot_email": "pandaclawbot@gmail.com"
-  }
+  "cost_guard": {
+    "session_limit_usd": 0.50,
+    "warn_at_usd": 0.25,
+    "action": "warn"
+  },
+  "webhooks": []
 }
