@@ -7,6 +7,7 @@ import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { NIM_MODELS } from "../../ai/providers/nvidia-nim.js";
 import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
+import { handleRateLimitCooldown } from "../../ai/providers/adapter.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -197,22 +198,7 @@ export async function runFastPath(
         };
       } catch (err: any) {
         lastError = err;
-        const errMsg = err.message || "";
-        const isRateLimit = err.status === 429 || 
-                            err.statusCode === 429 || 
-                            /429|rate limit|rate-limit/i.test(errMsg);
-        if (isRateLimit) {
-          let retryAfterMs = 60 * 1000; // default 1 minute
-          const match = errMsg.match(/retry-after:\s*(\d+)/i);
-          if (match && match[1]) {
-            const secs = parseInt(match[1], 10);
-            if (!isNaN(secs)) {
-              retryAfterMs = secs * 1000;
-            }
-          }
-          retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000);
-          globalRegistry.setCooldown(spec.providerName, retryAfterMs);
-        }
+        handleRateLimitCooldown(spec.providerName, err);
         continue;
       }
     }

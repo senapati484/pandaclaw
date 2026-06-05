@@ -1,6 +1,6 @@
 import type { PandaConfig } from "./ai.config.js";
 import chalk from "chalk";
-import { globalRegistry } from "./providers/adapter.js";
+import { globalRegistry, handleRateLimitCooldown } from "./providers/adapter.js";
 import type { LLMMessage } from "./providers/adapter.js";
 import { GroqAdapter } from "./providers/groq-adapter.js";
 import { OpenRouterAdapter } from "./providers/openrouter-adapter.js";
@@ -132,6 +132,33 @@ async function withTimeout<T>(
   }
 }
 
+async function recordUsageAndCache(
+  messages: any[],
+  content: string | null,
+  modelName: string,
+  usage: any,
+  useCache?: boolean
+): Promise<void> {
+  const finalInputTokens = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
+  const finalOutputTokens = usage?.completion_tokens ?? Math.ceil((content || "").length / 4);
+  const { CostTracker } = await import("../utils/cost-tracker.js");
+  CostTracker.track(modelName, finalInputTokens, finalOutputTokens);
+
+  if (useCache !== false && content) {
+    const cache = getCache();
+    cache.store(buildCachePrompt(messages), content, modelName);
+  }
+}
+
+function handleLlmError(providerName: string, isStream: boolean, err: any): Error {
+  const errMsg = err.message || "";
+  console.warn(
+    chalk.yellow(`\n⚡ [callLLM] ${providerName}${isStream ? " streaming" : ""} failed: ${errMsg.slice(0, 120)}. Trying next provider...\n`)
+  );
+  handleRateLimitCooldown(providerName, err);
+  return err;
+}
+
 async function callLLMStream(
   config: PandaConfig,
   options: LLMCallOptions,
@@ -195,40 +222,17 @@ async function callLLMStream(
         model: provConfig.model,
       };
 
-      // Cost Guard tracking
-      const finalInputTokens = parsedUsage?.prompt_tokens ?? Math.ceil(JSON.stringify(options.messages).length / 4);
-      const finalOutputTokens = parsedUsage?.completion_tokens ?? Math.ceil((fullContent || "").length / 4);
-      const { CostTracker } = await import("../utils/cost-tracker.js");
-      CostTracker.track(provConfig.model, finalInputTokens, finalOutputTokens);
-
-      if (options.useCache !== false && fullContent) {
-        const cache = getCache();
-        cache.store(buildCachePrompt(options.messages), fullContent, provConfig.model);
-      }
+      await recordUsageAndCache(
+        options.messages,
+        fullContent,
+        provConfig.model,
+        parsedUsage,
+        options.useCache
+      );
 
       return streamResponse;
     } catch (err: any) {
-      lastError = err;
-      const errMsg = err.message || "";
-      console.warn(
-        chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${errMsg.slice(0, 120)}. Trying next provider...\n`)
-      );
-
-      const isRateLimit = err.status === 429 || 
-                          err.statusCode === 429 || 
-                          /429|rate limit|rate-limit/i.test(errMsg);
-      if (isRateLimit) {
-        let retryAfterMs = 60 * 1000; // default 1 minute
-        const match = errMsg.match(/retry-after:\s*(\d+)/i);
-        if (match && match[1]) {
-          const secs = parseInt(match[1], 10);
-          if (!isNaN(secs)) {
-            retryAfterMs = secs * 1000;
-          }
-        }
-        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000); // Max 10 minutes
-        globalRegistry.setCooldown(provider.name, retryAfterMs);
-      }
+      lastError = handleLlmError(provider.name, true, err);
     }
   }
 
@@ -264,40 +268,17 @@ async function callLLMNonStream(options: LLMCallOptions, chain: any[]): Promise<
         model: result.model,
       };
 
-      // Cost Guard tracking
-      const finalInputTokens = result.usage?.prompt_tokens ?? Math.ceil(JSON.stringify(options.messages).length / 4);
-      const finalOutputTokens = result.usage?.completion_tokens ?? Math.ceil((result.content || "").length / 4);
-      const { CostTracker } = await import("../utils/cost-tracker.js");
-      CostTracker.track(result.model, finalInputTokens, finalOutputTokens);
-
-      if (options.useCache !== false && result.content) {
-        const cache = getCache();
-        cache.store(buildCachePrompt(options.messages), result.content, result.model);
-      }
+      await recordUsageAndCache(
+        options.messages,
+        result.content,
+        result.model,
+        result.usage,
+        options.useCache
+      );
 
       return nonStreamResponse;
     } catch (err: any) {
-      lastError = err;
-      const errMsg = err.message || "";
-      console.warn(
-        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg.slice(0, 120)}. Trying next provider...\n`)
-      );
-
-      const isRateLimit = err.status === 429 || 
-                          err.statusCode === 429 || 
-                          /429|rate limit|rate-limit/i.test(errMsg);
-      if (isRateLimit) {
-        let retryAfterMs = 60 * 1000; // default 1 minute
-        const match = errMsg.match(/retry-after:\s*(\d+)/i);
-        if (match && match[1]) {
-          const secs = parseInt(match[1], 10);
-          if (!isNaN(secs)) {
-            retryAfterMs = secs * 1000;
-          }
-        }
-        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000); // Max 10 minutes
-        globalRegistry.setCooldown(provider.name, retryAfterMs);
-      }
+      lastError = handleLlmError(provider.name, false, err);
     }
   }
 

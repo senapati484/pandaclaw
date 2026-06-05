@@ -177,3 +177,22 @@ export class ProviderRegistry {
 }
 
 export const globalRegistry = new ProviderRegistry();
+
+export function handleRateLimitCooldown(providerName: string, err: any): void {
+  const errMsg = err?.message || "";
+  const isRateLimit = err?.status === 429 || 
+                      err?.statusCode === 429 || 
+                      /429|rate limit|rate-limit/i.test(errMsg);
+  if (isRateLimit) {
+    let retryAfterMs = 60 * 1000; // default 1 minute
+    const match = errMsg.match(/retry-after:\s*(\d+)/i);
+    if (match && match[1]) {
+      const secs = parseInt(match[1], 10);
+      if (!isNaN(secs)) {
+        retryAfterMs = secs * 1000;
+      }
+    }
+    retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000); // Max 10 minutes
+    globalRegistry.setCooldown(providerName, retryAfterMs);
+  }
+}

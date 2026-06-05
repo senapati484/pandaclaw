@@ -4,7 +4,7 @@
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
-import { globalRegistry } from "../../ai/providers/adapter.js";
+import { globalRegistry, handleRateLimitCooldown } from "../../ai/providers/adapter.js";
 
 interface LLMResponse {
   choices: Array<{ message: { content: string } }>;
@@ -92,6 +92,62 @@ FIXED: <corrected answer>   — if something is missing or wrong`;
   return { verified: false, answer };
 }
 
+async function queryPandaModels(
+  pandaModels: string[],
+  reasonMessages: any[],
+  orKey: string,
+  apiBase: string,
+  maxTokens: number,
+  temperature: number
+): Promise<{ rawResponse: string; tokensUsed: number; succeeded: boolean }> {
+  let rawResponse: string = "";
+  let tokensUsed = 0;
+  let succeeded = false;
+
+  for (const pandaModel of pandaModels) {
+    try {
+      const reasonRes = await fetchWithRetry(`${apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${orKey}`,
+          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+          "X-Title": "PandaClaw",
+        },
+        body: JSON.stringify({
+          model: pandaModel,
+          messages: sanitizeMessages(reasonMessages),
+          max_tokens: maxTokens,
+          temperature,
+        }),
+      });
+
+      if (!reasonRes.ok) {
+        const errText = await reasonRes.text();
+        throw new Error(`OpenRouter ${reasonRes.status}: ${errText.slice(0, 200)}`);
+      }
+
+      const reasonData = (await reasonRes.json()) as LLMResponse;
+      rawResponse = reasonData.choices[0]?.message?.content ?? "";
+
+      // Cost Guard tracking
+      const finalInputTokens = (reasonData.usage as any)?.prompt_tokens ?? Math.ceil(JSON.stringify(reasonMessages).length / 4);
+      const finalOutputTokens = (reasonData.usage as any)?.completion_tokens ?? Math.ceil(rawResponse.length / 4);
+      const { CostTracker } = await import("../../utils/cost-tracker.js");
+      CostTracker.track(pandaModel, finalInputTokens, finalOutputTokens);
+
+      tokensUsed = reasonData.usage?.total_tokens ?? (finalInputTokens + finalOutputTokens);
+      succeeded = true;
+      break; // Success — stop trying fallbacks
+    } catch (err: any) {
+      console.warn(`[panda-mode] ${pandaModel} failed: ${err.message?.slice(0, 80)}`);
+      handleRateLimitCooldown("openrouter", err);
+    }
+  }
+
+  return { rawResponse, tokensUsed, succeeded };
+}
+
 export async function runPandaMode(
   task: AskTask,
   config: PandaConfig
@@ -123,65 +179,14 @@ export async function runPandaMode(
 
   const reasonMessages = buildReasonMessages(task.input, task.conversationHistory, isCodeRequest);
 
-  let rawResponse: string = "";
-  let tokensUsed = 0;
-  let reasonSucceeded = false;
-
-  for (const pandaModel of pandaModels) {
-    try {
-      const reasonRes = await fetchWithRetry(`${config.providers.openrouter.api_base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${orKey}`,
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        },
-        body: JSON.stringify({
-          model: pandaModel,
-          messages: sanitizeMessages(reasonMessages),
-          max_tokens: maxTokens,
-          temperature,
-        }),
-      });
-
-      if (!reasonRes.ok) {
-        const errText = await reasonRes.text();
-        throw new Error(`OpenRouter ${reasonRes.status}: ${errText.slice(0, 200)}`);
-      }
-
-      const reasonData = (await reasonRes.json()) as LLMResponse;
-      rawResponse = reasonData.choices[0]?.message?.content ?? "";
-
-      // Cost Guard tracking
-      const finalInputTokens = (reasonData.usage as any)?.prompt_tokens ?? Math.ceil(JSON.stringify(reasonMessages).length / 4);
-      const finalOutputTokens = (reasonData.usage as any)?.completion_tokens ?? Math.ceil(rawResponse.length / 4);
-      const { CostTracker } = await import("../../utils/cost-tracker.js");
-      CostTracker.track(pandaModel, finalInputTokens, finalOutputTokens);
-
-      tokensUsed = reasonData.usage?.total_tokens ?? (finalInputTokens + finalOutputTokens);
-      reasonSucceeded = true;
-      break; // Success — stop trying fallbacks
-    } catch (err: any) {
-      console.warn(`[panda-mode] ${pandaModel} failed: ${err.message?.slice(0, 80)}`);
-      const errMsg = err.message || "";
-      const isRateLimit = err.status === 429 || 
-                          err.statusCode === 429 || 
-                          /429|rate limit|rate-limit/i.test(errMsg);
-      if (isRateLimit) {
-        let retryAfterMs = 60 * 1000;
-        const match = errMsg.match(/retry-after:\s*(\d+)/i);
-        if (match && match[1]) {
-          const secs = parseInt(match[1], 10);
-          if (!isNaN(secs)) {
-            retryAfterMs = secs * 1000;
-          }
-        }
-        retryAfterMs = Math.min(retryAfterMs, 10 * 60 * 1000);
-        globalRegistry.setCooldown("openrouter", retryAfterMs);
-      }
-    }
-  }
+  const { rawResponse, tokensUsed, succeeded: reasonSucceeded } = await queryPandaModels(
+    pandaModels,
+    reasonMessages,
+    orKey,
+    config.providers.openrouter.api_base,
+    maxTokens,
+    temperature
+  );
 
   if (!reasonSucceeded) {
     // All OpenRouter models failed — use fast path
