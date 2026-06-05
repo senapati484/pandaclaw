@@ -8,15 +8,7 @@ import os from "os";
 import path from "path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";
-
-/** Resolve a path that may be relative OR absolute. Supports ~/ home notation. */
-function resolvePath(inputPath: string): string {
-  if (inputPath.startsWith("~/")) {
-    return path.resolve(os.homedir(), inputPath.slice(2));
-  }
-  if (path.isAbsolute(inputPath)) return inputPath;
-  return path.resolve(process.cwd(), inputPath);
-}
+import { resolvePath } from "../utils/path.js";
 
 /**
  * Run a quick syntax-only check on the written file based on its extension.

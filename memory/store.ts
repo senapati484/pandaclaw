@@ -27,7 +27,7 @@ function ensureDir(): void {
 
 // ── Persistent Chat Turn History ──────────────────────────────────────────
 
-export interface ChatMessage {
+interface ChatMessage {
   chatId: string;
   role: "user" | "assistant";
   content: string;
@@ -106,7 +106,25 @@ export function saveGraphRelation(relation: Omit<GraphRelation, "timestamp">): v
   syncGraphToMarkdown(relations);
 }
 
-export function syncGraphToMarkdown(relations: GraphRelation[]): void {
+export function parseAndSaveGraphRelations(text: string): number {
+  const lines = text.split("\n").filter((l: string) => l.trim());
+  let extractedCount = 0;
+  for (const line of lines) {
+    const cleanLine = line.replace(/^[\s•\-\d\.\*]+/, "").trim();
+    const parts = cleanLine.split("|").map((p: string) => p.trim());
+    if (parts.length === 3) {
+      const [subject, predicate, object] = parts;
+      if (subject && predicate && object) {
+        saveGraphRelation({ subject, predicate, object });
+        extractedCount++;
+      }
+    }
+  }
+  return extractedCount;
+}
+
+
+function syncGraphToMarkdown(relations: GraphRelation[]): void {
   const markdownPath = ".pandaclaw/KNOWLEDGE_GRAPH.md";
   if (relations.length === 0) {
     writeFileSync(markdownPath, "# 🐼 PandaClaw Knowledge Graph\n\nNo semantic relations recorded yet.", "utf8");
@@ -317,19 +335,7 @@ Do not include any other conversational text or markdown formatting.`;
     });
 
     const response = data.choices?.[0]?.message?.content ?? "";
-    const lines = response.split("\n").filter((l: string) => l.trim());
-    
-    // Save triplets to knowledge graph
-    for (const line of lines) {
-      const cleanLine = line.replace(/^[\s•\-\d\.\*]+/, "").trim();
-      const parts = cleanLine.split("|").map((p: string) => p.trim());
-      if (parts.length === 3) {
-        const [subject, predicate, object] = parts;
-        if (subject && predicate && object) {
-          saveGraphRelation({ subject, predicate, object });
-        }
-      }
-    }
+    parseAndSaveGraphRelations(response);
 
     // Also append a human-readable summary to COMPACTED_MEMORY.md
     const compactedPath = ".pandaclaw/COMPACTED_MEMORY.md";

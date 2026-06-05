@@ -53,7 +53,7 @@ function cosineSimilarity(tf1: Map<string, number>, tf2: Map<string, number>): n
   return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
 }
 
-export class ResponseCache {
+class ResponseCache {
   private entries: CacheEntry[] = [];
   private filePath: string;
   private similarityThreshold: number;
@@ -161,6 +161,4 @@ export function getCache(): ResponseCache {
   return _globalCache;
 }
 
-export function resetCache(): void {
-  _globalCache = null;
-}
+

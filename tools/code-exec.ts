@@ -18,101 +18,104 @@ function sanitizeGitCommand(command: string): string {
   return command.replace(/-c\s+"?user\.(name|email)=[^"\s]*"?/g, "").trim();
 }
 
-/**
- * Analyse stdout+stderr from a failed execution and return an actionable hint
- * the LLM can act on immediately without asking the user for help.
- */
-function detectHint(stdout: string, stderr: string, command: string): string | null {
-  const combined = `${stdout}\n${stderr}`.toLowerCase();
+interface HintMatcher {
+  match: (combined: string, stdout: string, stderr: string, command: string) => boolean;
+  getHint: (combined: string, stdout: string, stderr: string, command: string) => string;
+}
 
-  // Interactive stdin crashed
-  if (combined.includes("eoferror") || combined.includes("eof when reading")) {
-    return (
+const HINT_MATCHERS: HintMatcher[] = [
+  {
+    match: (combined) => combined.includes("eoferror") || combined.includes("eof when reading"),
+    getHint: () =>
       "The script called input() / readline but stdin is not interactive inside code_exec. " +
       "Fix: add a non-interactive fallback — check sys.stdin.isatty() (Python) or process.stdin.isTTY (Node), " +
       "catch EOFError, or supply inputs via command-line arguments or a pipe (e.g. echo '5' | python3 script.py)."
-    );
-  }
-
-  // Missing Python package
-  if (
-    combined.includes("modulenotfounderror") ||
-    combined.includes("no module named") ||
-    combined.includes("importerror")
-  ) {
-    const match =
-      stderr.match(/no module named ['"]?([\w.-]+)['"]?/i) ||
-      stdout.match(/no module named ['"]?([\w.-]+)['"]?/i);
-    const pkg = match?.[1] ?? "<package>";
-    return (
-      `Missing Python package '${pkg}'. Install it first: run code_exec with ` +
-      `command "pip3 install ${pkg}" or "pip3 install ${pkg} --user", then retry.`
-    );
-  }
-
-  // Missing Node/Bun package
-  if (combined.includes("cannot find module") || combined.includes("err_module_not_found")) {
-    const match =
-      stderr.match(/cannot find module ['"]([^'"]+)['"]/i) ||
-      stdout.match(/cannot find module ['"]([^'"]+)['"]/i);
-    const pkg = match?.[1] ?? "<package>";
-    return (
-      `Missing Node/Bun module '${pkg}'. Install it first: run code_exec with ` +
-      `command "bun add ${pkg}" or "npm install ${pkg}", then retry.`
-    );
-  }
-
-  // Permission denied
-  if (combined.includes("permission denied")) {
-    return (
+  },
+  {
+    match: (combined) =>
+      combined.includes("modulenotfounderror") ||
+      combined.includes("no module named") ||
+      combined.includes("importerror"),
+    getHint: (combined, stdout, stderr) => {
+      const match =
+        stderr.match(/no module named ['"]?([\w.-]+)['"]?/i) ||
+        stdout.match(/no module named ['"]?([\w.-]+)['"]?/i);
+      const pkg = match?.[1] ?? "<package>";
+      return (
+        `Missing Python package '${pkg}'. Install it first: run code_exec with ` +
+        `command "pip3 install ${pkg}" or "pip3 install ${pkg} --user", then retry.`
+      );
+    }
+  },
+  {
+    match: (combined) => combined.includes("cannot find module") || combined.includes("err_module_not_found"),
+    getHint: (combined, stdout, stderr) => {
+      const match =
+        stderr.match(/cannot find module ['"]([^'"]+)['"]/i) ||
+        stdout.match(/cannot find module ['"]([^'"]+)['"]/i);
+      const pkg = match?.[1] ?? "<package>";
+      return (
+        `Missing Node/Bun module '${pkg}'. Install it first: run code_exec with ` +
+        `command "bun add ${pkg}" or "npm install ${pkg}", then retry.`
+      );
+    }
+  },
+  {
+    match: (combined) => combined.includes("permission denied"),
+    getHint: () =>
       "Permission denied. If this is a script file, make it executable first: " +
       "run code_exec with 'chmod +x <path>' then retry. " +
       "If it's a directory or system path, check that the path is correct."
-    );
-  }
-
-  // Command not found
-  if (
-    combined.includes("command not found") ||
-    (combined.includes("not found") && combined.includes("zsh:"))
-  ) {
-    const match = command.match(/^(\S+)/);
-    const cmd = match?.[1] ?? "the command";
-    return (
-      `'${cmd}' was not found on PATH. Check if it's installed (e.g. 'which ${cmd}' or 'brew install ${cmd}'). ` +
-      "If writing a script, ensure you use the correct interpreter path (e.g. /usr/bin/env python3)."
-    );
-  }
-
-  // Python syntax error
-  if (combined.includes("syntaxerror") || combined.includes("invalid syntax")) {
-    return "Python SyntaxError detected. Re-read the written file with file_read, find and fix the syntax error, rewrite the file, and re-run.";
-  }
-
-  // Indentation error
-  if (combined.includes("indentationerror") || combined.includes("unexpected indent")) {
-    return "Python IndentationError. Re-read the written file, fix the indentation, rewrite it, and re-run.";
-  }
-
-  // File not found / no such file
-  if (combined.includes("no such file or directory") || combined.includes("filenotfounderror")) {
-    return (
+  },
+  {
+    match: (combined) =>
+      combined.includes("command not found") ||
+      (combined.includes("not found") && combined.includes("zsh:")),
+    getHint: (combined, stdout, stderr, command) => {
+      const match = command.match(/^(\S+)/);
+      const cmd = match?.[1] ?? "the command";
+      return (
+        `'${cmd}' was not found on PATH. Check if it's installed (e.g. 'which ${cmd}' or 'brew install ${cmd}'). ` +
+        "If writing a script, ensure you use the correct interpreter path (e.g. /usr/bin/env python3)."
+      );
+    }
+  },
+  {
+    match: (combined) => combined.includes("syntaxerror") || combined.includes("invalid syntax"),
+    getHint: () =>
+      "Python SyntaxError detected. Re-read the written file with file_read, find and fix the syntax error, rewrite the file, and re-run."
+  },
+  {
+    match: (combined) => combined.includes("indentationerror") || combined.includes("unexpected indent"),
+    getHint: () =>
+      "Python IndentationError. Re-read the written file, fix the indentation, rewrite it, and re-run."
+  },
+  {
+    match: (combined) => combined.includes("no such file or directory") || combined.includes("filenotfounderror"),
+    getHint: () =>
       "A file or directory referenced in the command does not exist. " +
       "Verify the path with list_dir or file_read, then retry with the correct absolute path."
-    );
-  }
-
-  // Timeout
-  if (combined.includes("etimedout") || combined.includes("timed out")) {
-    return (
+  },
+  {
+    match: (combined) => combined.includes("etimedout") || combined.includes("timed out"),
+    getHint: () =>
       "The command timed out. If it's a long-running process, increase the timeout parameter. " +
       "If it's an interactive script waiting for stdin, add a non-interactive fallback."
-    );
+  },
+  {
+    match: (combined) => combined.includes("typeerror") && (combined.includes("bun") || combined.includes("typescript")),
+    getHint: () =>
+      "TypeScript/Bun type error. Re-read the file, fix the type error, rewrite, and re-run."
   }
+];
 
-  // TypeScript / Bun type error
-  if (combined.includes("typeerror") && (combined.includes("bun") || combined.includes("typescript"))) {
-    return "TypeScript/Bun type error. Re-read the file, fix the type error, rewrite, and re-run.";
+function detectHint(stdout: string, stderr: string, command: string): string | null {
+  const combined = `${stdout}\n${stderr}`.toLowerCase();
+
+  for (const matcher of HINT_MATCHERS) {
+    if (matcher.match(combined, stdout, stderr, command)) {
+      return matcher.getHint(combined, stdout, stderr, command);
+    }
   }
 
   // Generic non-zero exit with no output at all
@@ -124,6 +127,35 @@ function detectHint(stdout: string, stderr: string, command: string): string | n
   }
 
   return null;
+}
+
+interface ExecResult {
+  stdout: string;
+  stderr?: string;
+  exitCode: number;
+  hint?: string;
+}
+
+function handleSpawnError(error: Error, timeoutMs: number, command: string): ExecResult {
+  const isTimeout = error.message.includes("ETIMEDOUT") || error.message.includes("timed out");
+  const errMsg = isTimeout ? `Command timed out after ${timeoutMs / 1000}s` : error.message;
+  const hint = detectHint("", errMsg, command);
+  return {
+    stdout: "(no output — command failed to start)",
+    stderr: errMsg,
+    exitCode: 1,
+    ...(hint ? { hint } : {}),
+  };
+}
+
+function handleNonZeroExit(status: number | null, stdout: string, stderr: string, command: string): ExecResult {
+  const hint = detectHint(stdout, stderr, command);
+  return {
+    stdout: stdout || "(no stdout)",
+    stderr: stderr || "(no stderr)",
+    exitCode: status ?? 1,
+    ...(hint ? { hint } : {}),
+  };
 }
 
 export const codeExecTool: ToolDefinition = {
@@ -154,35 +186,15 @@ export const codeExecTool: ToolDefinition = {
       encoding: "utf8",
     });
 
+    if (result.error) {
+      return handleSpawnError(result.error, timeoutMs, command);
+    }
+
     const stdout = (result.stdout ?? "").trim();
     const stderr = (result.stderr ?? "").trim();
 
-    // Timeout / spawn error
-    if (result.error) {
-      const isTimeout =
-        result.error.message.includes("ETIMEDOUT") ||
-        result.error.message.includes("timed out");
-      const errMsg = isTimeout
-        ? `Command timed out after ${timeoutMs / 1000}s`
-        : result.error.message;
-      const hint = detectHint("", errMsg, command);
-      return {
-        stdout: "(no output — command failed to start)",
-        stderr: errMsg,
-        exitCode: 1,
-        ...(hint ? { hint } : {}),
-      };
-    }
-
-    // Non-zero exit
     if (result.status !== 0) {
-      const hint = detectHint(stdout, stderr, command);
-      return {
-        stdout: stdout || "(no stdout)",
-        stderr: stderr || "(no stderr)",
-        exitCode: result.status ?? 1,
-        ...(hint ? { hint } : {}),
-      };
+      return handleNonZeroExit(result.status, stdout, stderr, command);
     }
 
     // Success

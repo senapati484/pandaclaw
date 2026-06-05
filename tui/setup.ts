@@ -6,28 +6,7 @@ import path from "path";
 import os from "os";
 import chalk from "chalk";
 
-export async function runSetup(): Promise<void> {
-  intro(chalk.bold.cyan("🐼 PandaClaw Configuration Setup Wizard 🐼"));
-
-  const scope = await select({
-    message: "Configure PandaClaw globally or locally for this project?",
-    options: [
-      { value: "global", label: "Globally (~/.pandaclaw/config.json)" },
-      { value: "local", label: "Locally (./config.json)" },
-    ],
-  });
-
-  if (isCancel(scope)) {
-    outro(chalk.yellow("Setup cancelled."));
-    return;
-  }
-
-  const isGlobal = scope === "global";
-  const configDir = isGlobal 
-    ? path.join(os.homedir(), ".pandaclaw") 
-    : process.cwd();
-  
-  const configPath = path.join(configDir, "config.json");
+function initializeSetupConfig(configPath: string, configDir: string, isGlobal: boolean): any {
   let config: any = {};
 
   if (existsSync(configPath)) {
@@ -64,13 +43,17 @@ export async function runSetup(): Promise<void> {
   config.telegram = config.telegram || { token: "" };
   config.slack = config.slack || { webhook_url: "" };
 
-  // 1. API Keys Section
+  return config;
+}
+
+async function promptApiKeys(config: any): Promise<boolean> {
   console.log(chalk.bold.magenta("\n🔑 [1/3] LLM & Provider API Keys"));
 
   const groqKey = await password({
     message: "Groq API Key (leave empty to keep current or skip)",
     mask: "*",
   });
+  if (isCancel(groqKey)) return false;
   if (typeof groqKey === "string" && groqKey.trim() !== "") {
     config.providers.groq.api_key = groqKey.trim();
   }
@@ -79,6 +62,7 @@ export async function runSetup(): Promise<void> {
     message: "OpenRouter API Key (leave empty to keep current or skip)",
     mask: "*",
   });
+  if (isCancel(orKey)) return false;
   if (typeof orKey === "string" && orKey.trim() !== "") {
     config.providers.openrouter.api_key = orKey.trim();
   }
@@ -87,6 +71,7 @@ export async function runSetup(): Promise<void> {
     message: "NVIDIA NIM API Key (leave empty to keep current or skip)",
     mask: "*",
   });
+  if (isCancel(nimKey)) return false;
   if (typeof nimKey === "string" && nimKey.trim() !== "") {
     config.providers.nvidia_nim.api_key = nimKey.trim();
   }
@@ -95,11 +80,15 @@ export async function runSetup(): Promise<void> {
     message: "Tavily Search API Key (leave empty to keep current or skip)",
     mask: "*",
   });
+  if (isCancel(tavilyKey)) return false;
   if (typeof tavilyKey === "string" && tavilyKey.trim() !== "") {
     config.tools.web_search.api_key = tavilyKey.trim();
   }
 
-  // 2. Default Model Providers
+  return true;
+}
+
+async function promptRoutingConfig(config: any): Promise<boolean> {
   console.log(chalk.bold.magenta("\n🤖 [2/3] Routing & Preferred Providers"));
 
   const fastProvider = await select({
@@ -110,6 +99,7 @@ export async function runSetup(): Promise<void> {
       { value: "nvidia_nim", label: `NVIDIA NIM (currently: ${config.routing.fast_path.provider === "nvidia_nim" ? "selected" : "configured"})` },
     ],
   });
+  if (isCancel(fastProvider)) return false;
   if (typeof fastProvider === "string") {
     config.routing.fast_path.provider = fastProvider;
     if (fastProvider === "groq") {
@@ -124,6 +114,7 @@ export async function runSetup(): Promise<void> {
     placeholder: config.routing.fast_path.model,
     defaultValue: config.routing.fast_path.model,
   });
+  if (isCancel(fastModel)) return false;
   if (typeof fastModel === "string" && fastModel.trim() !== "") {
     config.routing.fast_path.model = fastModel.trim();
   }
@@ -136,6 +127,7 @@ export async function runSetup(): Promise<void> {
       { value: "nvidia_nim", label: `NVIDIA NIM (currently: ${config.routing.planning.provider === "nvidia_nim" ? "selected" : "configured"})` },
     ],
   });
+  if (isCancel(planningProvider)) return false;
   if (typeof planningProvider === "string") {
     config.routing.planning.provider = planningProvider;
   }
@@ -145,17 +137,22 @@ export async function runSetup(): Promise<void> {
     placeholder: config.routing.planning.model,
     defaultValue: config.routing.planning.model,
   });
+  if (isCancel(planningModel)) return false;
   if (typeof planningModel === "string" && planningModel.trim() !== "") {
     config.routing.planning.model = planningModel.trim();
   }
 
-  // 3. Gateway & Integrations
+  return true;
+}
+
+async function promptGateways(config: any): Promise<boolean> {
   console.log(chalk.bold.magenta("\n💬 [3/3] Gateway & Platform Integrations"));
 
   const tgToken = await password({
     message: "Telegram Bot Token (leave empty to use the default shared PandaClaw bot)",
     mask: "*",
   });
+  if (isCancel(tgToken)) return false;
   if (typeof tgToken === "string" && tgToken.trim() !== "") {
     config.telegram = config.telegram || {};
     config.telegram.token = tgToken.trim();
@@ -165,15 +162,61 @@ export async function runSetup(): Promise<void> {
     message: "Slack Webhook URL (leave empty to keep current or skip)",
     mask: "*",
   });
+  if (isCancel(slackUrl)) return false;
   if (typeof slackUrl === "string" && slackUrl.trim() !== "") {
     config.slack.webhook_url = slackUrl.trim();
   }
 
-  // Write changes
+  return true;
+}
+
+function saveSetupConfig(configPath: string, config: any, isGlobal: boolean): void {
   try {
     writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
     outro(chalk.bold.green(`✨ PandaClaw setup completed and saved to ${isGlobal ? "~/.pandaclaw/config.json" : "config.json"}! ✨`));
   } catch (err: any) {
     outro(chalk.bold.red(`Error writing configuration file: ${err.message}`));
   }
+}
+
+export async function runSetup(): Promise<void> {
+  intro(chalk.bold.cyan("🐼 PandaClaw Configuration Setup Wizard 🐼"));
+
+  const scope = await select({
+    message: "Configure PandaClaw globally or locally for this project?",
+    options: [
+      { value: "global", label: "Globally (~/.pandaclaw/config.json)" },
+      { value: "local", label: "Locally (./config.json)" },
+    ],
+  });
+
+  if (isCancel(scope)) {
+    outro(chalk.yellow("Setup cancelled."));
+    return;
+  }
+
+  const isGlobal = scope === "global";
+  const configDir = isGlobal 
+    ? path.join(os.homedir(), ".pandaclaw") 
+    : process.cwd();
+  
+  const configPath = path.join(configDir, "config.json");
+  const config = initializeSetupConfig(configPath, configDir, isGlobal);
+
+  if (!(await promptApiKeys(config))) {
+    outro(chalk.yellow("Setup cancelled."));
+    return;
+  }
+
+  if (!(await promptRoutingConfig(config))) {
+    outro(chalk.yellow("Setup cancelled."));
+    return;
+  }
+
+  if (!(await promptGateways(config))) {
+    outro(chalk.yellow("Setup cancelled."));
+    return;
+  }
+
+  saveSetupConfig(configPath, config, isGlobal);
 }

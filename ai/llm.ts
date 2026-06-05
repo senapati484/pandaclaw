@@ -103,57 +103,45 @@ function buildCachePrompt(messages: any[]): string {
   return parts.join("\n");
 }
 
-export async function callLLM(config: PandaConfig, options: LLMCallOptions): Promise<any> {
-  // Initialize providers on first call if needed
-  if (globalRegistry.getAllAvailable().length === 0) {
-    initProviders(config);
+/**
+ * Run an async factory with an AbortController that fires after `ms` milliseconds.
+ * Throws an `Error` with the message `"${label} timed out"` on timeout.
+ */
+async function withTimeout<T>(
+  label: string,
+  ms: number,
+  factory: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    const result = await factory(controller.signal);
+    clearTimeout(id);
+    return result;
+  } catch (err: any) {
+    clearTimeout(id);
+    if (err.name === "AbortError") throw new Error(`${label} timed out`);
+    throw err;
   }
+}
 
-  const preferredProvider = resolvePreferredProvider(config);
-  const chain = globalRegistry.getFallbackChain(preferredProvider);
-
-  if (chain.length === 0) {
-    throw new Error("No LLM providers available. Check your API keys in config.json.");
-  }
-
+async function callLLMStream(
+  config: PandaConfig,
+  options: LLMCallOptions,
+  chain: any[],
+  preferredProvider: string
+): Promise<any> {
   let lastError: Error | null = null;
+  for (const provider of chain) {
+    const provConfig = resolveProviderConfig(config, provider.name);
+    if (!provConfig || !provConfig.apiKey || !provConfig.apiBase) continue;
 
-  // Response cache lookup
-  if (options.useCache !== false) {
-    const cache = getCache();
-    const cachePrompt = buildCachePrompt(options.messages);
-    const cacheModel = resolveProviderConfig(config, preferredProvider)?.model || "";
-    const cached = cache.lookup(cachePrompt, cacheModel);
-    if (cached && cached.hit) {
-      if (options.onChunk) {
-        options.onChunk({ type: "text", content: cached.response });
-        options.onChunk({ type: "done" });
-      }
-      return {
-        choices: [{ message: { role: "assistant", content: cached.response } }],
-        model: cacheModel,
-        cached: true,
-      };
-    }
-  }
+    try {
+      let fullContent = "";
+      const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
 
-  // Streaming path
-  if (options.stream && options.onChunk) {
-    for (const provider of chain) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-      const provConfig = resolveProviderConfig(config, provider.name);
-      if (!provConfig || !provConfig.apiKey || !provConfig.apiBase) {
-        clearTimeout(timeoutId);
-        continue;
-      }
-
-      try {
-        let fullContent = "";
-        const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
-
-        await streamCompletion(
+      await withTimeout(`${provider.name} stream`, 30_000, (signal) =>
+        streamCompletion(
           provConfig.apiBase.replace(/\/+$/, ""),
           provConfig.apiKey,
           provConfig.model,
@@ -178,61 +166,55 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
             tools: options.tools as any,
             temperature: options.temperature,
             max_tokens: options.max_tokens,
-            signal: controller.signal,
+            signal,
           }
-        );
+        )
+      );
 
-        clearTimeout(timeoutId);
-
-        const streamResponse = {
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: fullContent || null,
-                tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-              },
+      const streamResponse = {
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: fullContent || null,
+              tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
             },
-          ],
-          model: provConfig.model,
-        };
+          },
+        ],
+        model: provConfig.model,
+      };
 
-        // Cache the response
-        if (options.useCache !== false && fullContent) {
-          const cache = getCache();
-          cache.store(buildCachePrompt(options.messages), fullContent, provConfig.model);
-        }
-
-        return streamResponse;
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        const isTimeout = err.name === "AbortError";
-        lastError = isTimeout ? new Error(`${provider.name} timed out`) : err;
-        console.warn(
-          chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${(err.message || "")?.slice(0, 120)}. Trying next provider...\n`)
-        );
+      if (options.useCache !== false && fullContent) {
+        const cache = getCache();
+        cache.store(buildCachePrompt(options.messages), fullContent, provConfig.model);
       }
-    }
 
-    throw lastError || new Error("All LLM providers in fallback chain failed.");
+      return streamResponse;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(
+        chalk.yellow(`\n⚡ [callLLM] ${provider.name} streaming failed: ${(err.message || "")?.slice(0, 120)}. Trying next provider...\n`)
+      );
+    }
   }
 
-  // Non-streaming path
+  throw lastError || new Error("All LLM providers in fallback chain failed.");
+}
+
+async function callLLMNonStream(options: LLMCallOptions, chain: any[]): Promise<any> {
+  let lastError: Error | null = null;
   for (const provider of chain) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15_000);
-
     try {
-      const result = await provider.complete({
-        messages: options.messages as LLMMessage[],
-        tools: options.tools,
-        tool_choice: options.tool_choice as any,
-        temperature: options.temperature,
-        max_tokens: options.max_tokens,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      const result = await withTimeout<any>(`${provider.name}`, 15_000, (signal) =>
+        provider.complete({
+          messages: options.messages as LLMMessage[],
+          tools: options.tools,
+          tool_choice: options.tool_choice as any,
+          temperature: options.temperature,
+          max_tokens: options.max_tokens,
+          signal,
+        })
+      );
 
       const nonStreamResponse = {
         choices: [
@@ -248,7 +230,6 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
         model: result.model,
       };
 
-      // Cache the response
       if (options.useCache !== false && result.content) {
         const cache = getCache();
         cache.store(buildCachePrompt(options.messages), result.content, result.model);
@@ -256,17 +237,56 @@ export async function callLLM(config: PandaConfig, options: LLMCallOptions): Pro
 
       return nonStreamResponse;
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      const isTimeout = err.name === "AbortError";
-      const errMsg = isTimeout ? "Request timed out after 15s" : err.message;
-      lastError = isTimeout ? new Error(`${provider.name} timed out`) : err;
+      lastError = err;
+      const errMsg = err.message?.slice(0, 120) ?? "unknown error";
       console.warn(
-        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg?.slice(0, 120)}. Trying next provider...\n`)
+        chalk.yellow(`\n⚡ [callLLM] ${provider.name} failed: ${errMsg}. Trying next provider...\n`)
       );
     }
   }
 
   throw lastError || new Error("All LLM providers in fallback chain failed.");
+}
+
+export async function callLLM(config: PandaConfig, options: LLMCallOptions): Promise<any> {
+  // Initialize providers on first call if needed
+  if (globalRegistry.getAllAvailable().length === 0) {
+    initProviders(config);
+  }
+
+  const preferredProvider = resolvePreferredProvider(config);
+  const chain = globalRegistry.getFallbackChain(preferredProvider);
+
+  if (chain.length === 0) {
+    throw new Error("No LLM providers available. Check your API keys in config.json.");
+  }
+
+  // Response cache lookup
+  if (options.useCache !== false) {
+    const cache = getCache();
+    const cachePrompt = buildCachePrompt(options.messages);
+    const cacheModel = resolveProviderConfig(config, preferredProvider)?.model || "";
+    const cached = cache.lookup(cachePrompt, cacheModel);
+    if (cached && cached.hit) {
+      if (options.onChunk) {
+        options.onChunk({ type: "text", content: cached.response });
+        options.onChunk({ type: "done" });
+      }
+      return {
+        choices: [{ message: { role: "assistant", content: cached.response } }],
+        model: cacheModel,
+        cached: true,
+      };
+    }
+  }
+
+  // Streaming path
+  if (options.stream && options.onChunk) {
+    return await callLLMStream(config, options, chain, preferredProvider);
+  }
+
+  // Non-streaming path
+  return await callLLMNonStream(options, chain);
 }
 
 /** Transcribe audio using Groq's Whisper API */

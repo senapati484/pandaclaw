@@ -74,14 +74,7 @@ export class TelegramAdapter implements ChannelAdapter {
     this.allowedUsers = [...new Set([...fromConfig, ...fromStorage])];
   }
 
-  public async initialize(): Promise<void> {
-    const token = this.config.telegram?.token ?? process.env.TELEGRAM_TOKEN ?? "";
-    if (!token) {
-      throw new Error("Missing Telegram token");
-    }
-
-    // dropPendingUpdates: true — skip messages queued while bot was offline.
-    // This prevents replaying stale messages after a restart/crash.
+  private async setupPolling(token: string): Promise<void> {
     this.bot = new TelegramBot(token, {
       polling: {
         interval: 300,
@@ -90,18 +83,15 @@ export class TelegramAdapter implements ChannelAdapter {
       },
     });
 
-    // ── Drop pending updates on startup to avoid replaying stale messages ──
     try {
       await (this.bot as any).getUpdates({ offset: -1, limit: 1 });
     } catch { /* best-effort */ }
 
-    // ── Handle polling errors gracefully (especially 409 Conflict) ──────────
     this.bot.on("polling_error", (err: any) => {
       const code: string = err?.code ?? "";
       const msg: string = err?.message ?? String(err);
 
       if (code === "ETELEGRAM" && msg.includes("409")) {
-        // Another instance is running — stop this one cleanly
         console.warn(chalk.yellow(
           "\n⚠️  Another PandaClaw instance is already running (Telegram 409).\n" +
           "   Stop the other instance first, then restart.\n"
@@ -110,99 +100,78 @@ export class TelegramAdapter implements ChannelAdapter {
         return;
       }
 
-      // Log other non-fatal polling errors without crashing
       if (!msg.includes("EFATAL") && !msg.includes("terminated")) {
         console.warn(chalk.gray(`  [telegram] polling warning: ${msg.slice(0, 120)}`));
       }
     });
 
-    // ── Clean shutdown on Ctrl+C / SIGTERM ──────────────────────────────────
     const cleanup = () => {
       this.bot?.stopPolling().catch(() => {});
     };
     process.once("SIGINT", cleanup);
     process.once("SIGTERM", cleanup);
+  }
 
-    // Generate pairing code if no users are authorized yet on this device
-    if (this.allowedUsers.length === 0) {
-      const codePart1 = Math.floor(100 + Math.random() * 900);
-      const codePart2 = Math.floor(100 + Math.random() * 900);
-      this.pairingCode = `${codePart1}-${codePart2}`;
+  private generatePairingCode(): void {
+    const codePart1 = Math.floor(100 + Math.random() * 900);
+    const codePart2 = Math.floor(100 + Math.random() * 900);
+    this.pairingCode = `${codePart1}-${codePart2}`;
 
-      // Print a beautiful rounded terminal pairing banner
-      console.log(chalk.hex("#5b4d9e")("\n╭──────────────────────────────────────────────────────────╮"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.bold.hex("#e8dcf8")("🐼 Telegram Dynamic Device Pairing") + " ".repeat(21) + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("├──────────────────────────────────────────────────────────┤"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.yellow("🔑 Pairing Code: ") + chalk.bold.underline.hex("#e8dcf8")(this.pairingCode) + " ".repeat(24) + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("To authorize your Telegram account on this device:") + "      " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("1. Open the bot chat in Telegram.") + "                       " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("2. Send: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                              " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Each person runs their own PandaClaw + pairs their own") + "  " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Telegram account. One bot, many devices. ✅") + "             " + chalk.hex("#5b4d9e")(" │"));
-      console.log(chalk.hex("#5b4d9e")("╰──────────────────────────────────────────────────────────╯\n"));
-    } else {
-      console.log(chalk.hex("#5b4d9e")(`\n  🐼 Telegram bot ready — ${this.allowedUsers.length} device(s) authorized.\n`));
-    }
+    console.log(chalk.hex("#5b4d9e")("\n╭──────────────────────────────────────────────────────────╮"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.bold.hex("#e8dcf8")("🐼 Telegram Dynamic Device Pairing") + " ".repeat(21) + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("├──────────────────────────────────────────────────────────┤"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.yellow("🔑 Pairing Code: ") + chalk.bold.underline.hex("#e8dcf8")(this.pairingCode) + " ".repeat(24) + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("To authorize your Telegram account on this device:") + "      " + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("1. Open the bot chat in Telegram.") + "                       " + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("2. Send: ") + chalk.bold.cyan(`/pair ${this.pairingCode}`) + "                              " + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + " ".repeat(56) + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Each person runs their own PandaClaw + pairs their own") + "  " + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("│ ") + chalk.gray("Telegram account. One bot, many devices. ✅") + "             " + chalk.hex("#5b4d9e")(" │"));
+    console.log(chalk.hex("#5b4d9e")("╰──────────────────────────────────────────────────────────╯\n"));
+  }
 
-    // ── Photo handler ───────────────────────────────────────────────────────
+  private setupPhotoHandler(): void {
+    if (!this.bot) return;
     this.bot.on("photo", async (msg) => {
-      if (!this.bot || !this.messageCallback) return;
-      if (!msg.from || !this.isAllowed(msg.from.id)) {
-        await this.sendPairingRequest(msg.chat.id);
-        return;
-      }
+      if (!await this.checkAuthorized(msg)) return;
 
       try {
         const photos = msg.photo!;
         const fileId = photos[photos.length - 1]!.file_id;
-        const fileLink = await this.bot.getFileLink(fileId);
-
-        const res = await fetch(fileLink);
-        if (!res.ok) throw new Error("Failed to download image");
-
-        const arrayBuf = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
+        const buffer = await this.downloadTelegramFile(fileId);
 
         const channelMsg: ChannelMessage = {
           id: msg.message_id.toString(),
-          senderId: msg.from.id.toString(),
-          senderName: msg.from.first_name || "Unknown",
+          senderId: msg.from!.id.toString(),
+          senderName: msg.from!.first_name || "Unknown",
           text: msg.caption ?? "Describe and analyze this image",
           photoBuffer: buffer,
           mimeType: "image/jpeg",
           chatId: msg.chat.id.toString(),
         };
 
-        await this.messageCallback(channelMsg);
+        await this.messageCallback!(channelMsg);
       } catch (err: any) {
-        await this.bot.sendMessage(msg.chat.id, `❌ Error processing photo: ${err.message}`);
+        await this.bot!.sendMessage(msg.chat.id, `❌ Error processing photo: ${err.message}`);
       }
     });
+  }
 
-    // ── Audio/voice handler ─────────────────────────────────────────────────
+  private setupAudioHandlers(): void {
+    if (!this.bot) return;
     const handleAudio = async (
       msg: any,
       fileId: string,
       mimeType: string,
       defaultFileName: string
     ) => {
-      if (!this.bot || !this.messageCallback) return;
-      if (!msg.from || !this.isAllowed(msg.from.id)) {
-        await this.sendPairingRequest(msg.chat.id);
-        return;
-      }
+      if (!await this.checkAuthorized(msg)) return;
 
       try {
-        await this.bot.sendChatAction(msg.chat.id, "typing");
+        await this.bot!.sendChatAction(msg.chat.id, "typing");
 
-        const fileLink = await this.bot.getFileLink(fileId);
-        const res = await fetch(fileLink);
-        if (!res.ok) throw new Error("Failed to download audio file");
-
-        const arrayBuf = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
+        const buffer = await this.downloadTelegramFile(fileId);
 
         const groqApiKey = this.config.providers.groq.api_key;
         if (!groqApiKey) {
@@ -213,23 +182,23 @@ export class TelegramAdapter implements ChannelAdapter {
         const text = await transcribeAudio(buffer, mimeType, defaultFileName, groqApiKey);
 
         if (!text) {
-          await this.bot.sendMessage(msg.chat.id, "🐼 I couldn't hear or transcribe any speech in that audio.");
+          await this.bot!.sendMessage(msg.chat.id, "🐼 I couldn't hear or transcribe any speech in that audio.");
           return;
         }
 
-        await this.bot.sendMessage(msg.chat.id, `🎙 *Transcribed:* _"${text}"_`, { parse_mode: "Markdown" });
+        await this.bot!.sendMessage(msg.chat.id, `🎙 *Transcribed:* _"${text}"_`, { parse_mode: "Markdown" });
 
         const channelMsg: ChannelMessage = {
           id: msg.message_id.toString(),
-          senderId: msg.from.id.toString(),
-          senderName: msg.from.first_name || "Unknown",
+          senderId: msg.from!.id.toString(),
+          senderName: msg.from!.first_name || "Unknown",
           text: text,
           chatId: msg.chat.id.toString(),
         };
 
-        await this.messageCallback(channelMsg);
+        await this.messageCallback!(channelMsg);
       } catch (err: any) {
-        await this.bot.sendMessage(msg.chat.id, `❌ Error processing voice message: ${err.message}`);
+        await this.bot!.sendMessage(msg.chat.id, `❌ Error processing voice message: ${err.message}`);
       }
     };
 
@@ -242,46 +211,51 @@ export class TelegramAdapter implements ChannelAdapter {
       if (!msg.audio) return;
       await handleAudio(msg, msg.audio.file_id, msg.audio.mime_type || "audio/mpeg", "audio.mp3");
     });
+  }
 
-    // ── Text handler ────────────────────────────────────────────────────────
+  private async handlePairCommand(msg: any, text: string): Promise<void> {
+    if (!this.bot) return;
+    const parts = text.split(/\s+/);
+    const codeInput = parts[1];
+
+    if (!this.pairingCode) {
+      await this.bot.sendMessage(msg.chat.id, "🐼 This device already has authorized users. No pairing needed!");
+      return;
+    }
+
+    if (codeInput === this.pairingCode) {
+      this.allowedUsers.push(msg.from.id);
+      savePairedUser(msg.from.id);  // Save to .pandaclaw/paired-users.json (gitignored)
+      this.pairingCode = null; // Clear code after successful pairing
+
+      console.log(chalk.green(`\n✓ Paired! Telegram @${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}) authorized on this device. 🐼\n`));
+      await this.bot.sendMessage(
+        msg.chat.id,
+        `🎉 *Device paired successfully!*\n\nWelcome @${msg.from.username || msg.from.first_name}!\nYou are now authorized to command PandaClaw on this machine.\n\n_Your authorization is saved locally on this device._`,
+        { parse_mode: "Markdown" }
+      );
+    } else {
+      await this.bot.sendMessage(
+        msg.chat.id,
+        "❌ *Invalid pairing code.*\n\nPlease double-check the code shown in your local terminal.",
+        { parse_mode: "Markdown" }
+      );
+    }
+  }
+
+  private setupTextHandler(): void {
+    if (!this.bot) return;
     this.bot.on("message", async (msg) => {
       if (!this.bot || msg.photo || msg.voice || msg.audio) return;
       if (!msg.from) return;
 
       const text = msg.text?.trim() || "";
 
-      // /pair command — pair this Telegram account with this device
       if (text.startsWith("/pair")) {
-        const parts = text.split(/\s+/);
-        const codeInput = parts[1];
-
-        if (!this.pairingCode) {
-          await this.bot.sendMessage(msg.chat.id, "🐼 This device already has authorized users. No pairing needed!");
-          return;
-        }
-
-        if (codeInput === this.pairingCode) {
-          this.allowedUsers.push(msg.from.id);
-          savePairedUser(msg.from.id);  // Save to .pandaclaw/paired-users.json (gitignored)
-          this.pairingCode = null; // Clear code after successful pairing
-
-          console.log(chalk.green(`\n✓ Paired! Telegram @${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}) authorized on this device. 🐼\n`));
-          await this.bot.sendMessage(
-            msg.chat.id,
-            `🎉 *Device paired successfully!*\n\nWelcome @${msg.from.username || msg.from.first_name}!\nYou are now authorized to command PandaClaw on this machine.\n\n_Your authorization is saved locally on this device._`,
-            { parse_mode: "Markdown" }
-          );
-        } else {
-          await this.bot.sendMessage(
-            msg.chat.id,
-            "❌ *Invalid pairing code.*\n\nPlease double-check the code shown in your local terminal.",
-            { parse_mode: "Markdown" }
-          );
-        }
+        await this.handlePairCommand(msg, text);
         return;
       }
 
-      // Not authorized yet
       if (!this.isAllowed(msg.from.id)) {
         await this.sendPairingRequest(msg.chat.id);
         return;
@@ -299,6 +273,25 @@ export class TelegramAdapter implements ChannelAdapter {
 
       await this.messageCallback(channelMsg);
     });
+  }
+
+  public async initialize(): Promise<void> {
+    const token = this.config.telegram?.token ?? process.env.TELEGRAM_TOKEN ?? "";
+    if (!token) {
+      throw new Error("Missing Telegram token");
+    }
+
+    await this.setupPolling(token);
+
+    if (this.allowedUsers.length === 0) {
+      this.generatePairingCode();
+    } else {
+      console.log(chalk.hex("#5b4d9e")(`\n  🐼 Telegram bot ready — ${this.allowedUsers.length} device(s) authorized.\n`));
+    }
+
+    this.setupPhotoHandler();
+    this.setupAudioHandlers();
+    this.setupTextHandler();
   }
 
   public async stop(): Promise<void> {
@@ -334,5 +327,23 @@ export class TelegramAdapter implements ChannelAdapter {
       "🐼 *Your Telegram account is not yet paired with this device.*" + codeHint,
       { parse_mode: "Markdown" }
     );
+  }
+
+  private async checkAuthorized(msg: any): Promise<boolean> {
+    if (!this.bot || !this.messageCallback) return false;
+    if (!msg.from || !this.isAllowed(msg.from.id)) {
+      await this.sendPairingRequest(msg.chat.id);
+      return false;
+    }
+    return true;
+  }
+
+  private async downloadTelegramFile(fileId: string): Promise<Buffer> {
+    if (!this.bot) throw new Error("Bot is not initialized");
+    const fileLink = await this.bot.getFileLink(fileId);
+    const res = await fetch(fileLink);
+    if (!res.ok) throw new Error(`Failed to download file from Telegram: ${res.statusText}`);
+    const arrayBuf = await res.arrayBuffer();
+    return Buffer.from(arrayBuf);
   }
 }

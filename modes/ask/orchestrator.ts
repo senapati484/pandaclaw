@@ -13,6 +13,94 @@ import { saveToMemory } from "../../memory/store.js";
 const PANDA = chalk.hex("#5b4d9e");
 const FACE  = chalk.hex("#e8dcf8");
 
+function streamAnswer(text: string): void {
+  const words = text.split(" ");
+  let buf = "";
+  for (const w of words) {
+    buf += (buf ? " " : "") + w;
+    if (buf.length >= 80) {
+      process.stdout.write(buf);
+      buf = "";
+    }
+  }
+  if (buf) process.stdout.write(buf);
+}
+
+function showThinkingIndicator(route: string): void {
+  if (route === "complex" || route === "action") {
+    process.stdout.write(PANDA("  🐼 thinking\r"));
+  } else {
+    process.stdout.write(chalk.gray("  ⚡\r"));
+  }
+}
+
+interface CliRouteResult {
+  answer: string;
+  durationMs: number;
+  provider: string;
+  badgeInfo: string;
+}
+
+async function handleCliRoute(
+  trimmed: string,
+  route: string,
+  task: AskTask,
+  config: any
+): Promise<CliRouteResult> {
+  if (route === "action") {
+    const { runToolAgent } = await import("./tool-agent.js");
+    const toolCtx: ToolContext = {
+      userId: "local-cli",
+      channel: "cli",
+      workspacePath: "/",
+      requestConsent: async () => true,
+    };
+
+    const result = await runToolAgent(trimmed, config, toolCtx);
+    const badgeInfo = result.toolsUsed.length > 0 ? ` · tools: ${result.toolsUsed.join(", ")}` : "";
+    return {
+      answer: result.answer,
+      durationMs: result.durationMs,
+      provider: "tool-agent",
+      badgeInfo,
+    };
+  }
+
+  if (route === "complex") {
+    const result = await runPandaMode(task, config);
+    const badgeInfo = result.verified ? " · verified ✓" : "";
+    return {
+      answer: result.answer,
+      durationMs: result.durationMs,
+      provider: result.provider,
+      badgeInfo,
+    };
+  }
+
+  // default: simple fast path
+  const result = await runFastPath(task, config);
+  return {
+    answer: result.answer,
+    durationMs: result.durationMs,
+    provider: result.provider,
+    badgeInfo: "",
+  };
+}
+
+function saveCliMemory(taskId: string, route: string, content: string): void {
+  try {
+    saveToMemory({
+      id: taskId,
+      timestamp: Date.now(),
+      role: "user",
+      content,
+      importance: route === "simple" ? "low" : "high",
+    });
+  } catch {
+    // Memory save errors are non-fatal
+  }
+}
+
 export async function runAskMode(): Promise<void> {
   const config = readConfig();
 
@@ -48,108 +136,32 @@ export async function runAskMode(): Promise<void> {
         createdAt: new Date(),
       };
 
-      // Thinking indicator — cleared by \x1b[2K\r before answer
-      if (route === "complex") {
-        process.stdout.write(PANDA("  🐼 thinking\r"));
-      } else if (route === "action") {
-        process.stdout.write(PANDA("  🐼 thinking\r"));
-      } else {
-        process.stdout.write(chalk.gray("  ⚡\r"));
-      }
-
-      const start = Date.now();
-      let answer = "";
-      let durationMs = 0;
-      let provider = "";
-      let badgeInfo = "";
-      let toolsUsed: string[] = [];
+      showThinkingIndicator(route);
 
       try {
-        // Stream final answer word-by-word for typing effect
-        const streamAnswer = (text: string) => {
-          const words = text.split(" ");
-          let buf = "";
-          for (const w of words) {
-            buf += (buf ? " " : "") + w;
-            if (buf.length >= 80) { process.stdout.write(buf); buf = ""; }
-          }
-          if (buf) process.stdout.write(buf);
-        };
+        const result = await handleCliRoute(trimmed, route, task, config);
 
-        if (route === "action") {
-          const { runToolAgent } = await import("./tool-agent.js");
-          const toolCtx: ToolContext = {
-            userId: "local-cli",
-            channel: "cli",
-            workspacePath: "/",
-            requestConsent: async () => true,
-          };
-
-          const result = await runToolAgent(trimmed, config, toolCtx);
-          answer = result.answer;
-          durationMs = result.durationMs;
-          provider = "tool-agent";
-          const tools = result.toolsUsed;
-          badgeInfo = tools.length > 0 ? ` · tools: ${tools.join(", ")}` : "";
-
-          process.stdout.write("\x1b[2K\r");
-          console.log();
-          console.log(PANDA(`  🐼 action mode · ${durationMs}ms · ${provider}${badgeInfo}`));
-          console.log();
-          process.stdout.write(FACE("PandaClaw: "));
-          streamAnswer(answer);
-          console.log();
-        } else if (route === "complex") {
-          const result = await runPandaMode(task, config);
-          answer = result.answer;
-          durationMs = result.durationMs;
-          provider = result.provider;
-          badgeInfo = result.verified ? " · verified ✓" : "";
-
-          process.stdout.write("\x1b[2K\r");
-          console.log();
-          console.log(PANDA(`  🐼 panda mode · ${durationMs}ms · ${provider}${badgeInfo}`));
-          console.log();
-          process.stdout.write(FACE("PandaClaw: "));
-          streamAnswer(answer);
-          console.log();
+        process.stdout.write("\x1b[2K\r");
+        console.log();
+        if (route === "action" || route === "complex") {
+          console.log(PANDA(`  🐼 ${route} mode · ${result.durationMs}ms · ${result.provider}${result.badgeInfo}`));
         } else {
-          const result = await runFastPath(task, config);
-          answer = result.answer;
-          durationMs = result.durationMs;
-          provider = result.provider;
-
-          process.stdout.write("\x1b[2K\r");
-          console.log();
-          console.log(chalk.gray(`  ⚡ fast · ${durationMs}ms · ${provider}`));
-          console.log();
-          process.stdout.write(FACE("PandaClaw: "));
-          streamAnswer(answer);
-          console.log();
+          console.log(chalk.gray(`  ⚡ fast · ${result.durationMs}ms · ${result.provider}`));
         }
+        console.log();
+        process.stdout.write(FACE("PandaClaw: "));
+        streamAnswer(result.answer);
+        console.log();
+
+        // Update conversation history
+        conversationHistory.push({ role: "user", content: trimmed });
+        conversationHistory.push({ role: "assistant", content: result.answer });
+
+        saveCliMemory(task.id, route, trimmed);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stdout.write("\x1b[2K\r");
         console.log(chalk.red(`\n  ❌ Error: ${msg}\n`));
-        promptUser();
-        return;
-      }
-
-      // Update conversation history
-      conversationHistory.push({ role: "user", content: trimmed });
-      conversationHistory.push({ role: "assistant", content: answer });
-
-      // Persist to memory
-      try {
-        saveToMemory({
-          id: task.id,
-          timestamp: Date.now(),
-          role: "user",
-          content: trimmed,
-          importance: route === "simple" ? "low" : "high",
-        });
-      } catch {
-        // Memory save errors are non-fatal
       }
 
       console.log();
@@ -220,4 +232,3 @@ export class AskOrchestrator {
     return this.session.history;
   }
 }
-

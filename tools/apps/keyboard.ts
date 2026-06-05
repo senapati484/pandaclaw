@@ -49,130 +49,182 @@ export async function simulateKeystroke(text: string): Promise<string> {
   }
 }
 
-/**
- * Presses a specific special key or key combo (Cross-Platform).
- */
-export async function simulateKeyPress(key: string, modifiers?: string[]): Promise<string> {
-  const platform = getPlatform();
+const DARWIN_MODIFIERS: Record<string, string> = {
+  command: "command down",
+  cmd: "command down",
+  option: "option down",
+  alt: "option down",
+  control: "control down",
+  ctrl: "control down",
+  shift: "shift down"
+};
+
+const LINUX_MODIFIERS: Record<string, string> = {
+  command: "super",
+  cmd: "super",
+  control: "ctrl",
+  ctrl: "ctrl",
+  alt: "alt",
+  option: "alt",
+  shift: "shift"
+};
+
+const DARWIN_KEY_CODES: Record<string, string> = {
+  return: "key code 36",
+  enter: "key code 36",
+  tab: "key code 48",
+  space: "key code 49",
+  escape: "key code 53",
+  esc: "key code 53",
+  up: "key code 126",
+  down: "key code 125",
+  left: "key code 123",
+  right: "key code 124",
+  pgdn: "key code 121",
+  pgup: "key code 116",
+  home: "key code 115",
+  end: "key code 119",
+};
+
+const WIN32_SEND_KEYS: Record<string, string> = {
+  return: "{ENTER}",
+  enter: "{ENTER}",
+  tab: "{TAB}",
+  space: " ",
+  escape: "{ESC}",
+  esc: "{ESC}",
+  up: "{UP}",
+  down: "{DOWN}",
+  left: "{LEFT}",
+  right: "{RIGHT}",
+  pgdn: "{PGDN}",
+  pgup: "{PGUP}",
+  home: "{HOME}",
+  end: "{END}",
+};
+
+const LINUX_KEYS: Record<string, string> = {
+  return: "Return",
+  enter: "Return",
+  tab: "Tab",
+  space: "space",
+  escape: "Escape",
+  esc: "Escape",
+  up: "Up",
+  down: "Down",
+  left: "Left",
+  right: "Right",
+  pgdn: "Page_Down",
+  pgup: "Page_Up",
+  home: "Home",
+  end: "End",
+};
+
+function getDarwinModifierString(modifiers?: string[]): string {
+  if (!modifiers || modifiers.length === 0) return "";
+  const mapped = modifiers
+    .map((mod) => DARWIN_MODIFIERS[mod.toLowerCase()] || null)
+    .filter((m): m is string => m !== null);
+  if (mapped.length > 0) {
+    return ` using {${mapped.join(", ")}}`;
+  }
+  return "";
+}
+
+function getDarwinKeyCodeCommand(lowerKey: string, key: string): string {
+  const code = DARWIN_KEY_CODES[lowerKey];
+  if (code) return code;
+  const escapedChar = key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `keystroke "${escapedChar}"`;
+}
+
+async function simulateKeyPressDarwin(key: string, modifiers?: string[]): Promise<string> {
   const lowerKey = key.toLowerCase();
+  const modifierString = getDarwinModifierString(modifiers);
+  const pressCommand = getDarwinKeyCodeCommand(lowerKey, key);
 
-  // ====== 1. macOS Darwin Branch ======
-  if (platform === "darwin") {
-    let modifierString = "";
-    if (modifiers && modifiers.length > 0) {
-      const mapped = modifiers
-        .map((mod) => {
-          const lower = mod.toLowerCase();
-          if (lower === "command" || lower === "cmd") return "command down";
-          if (lower === "option" || lower === "alt") return "option down";
-          if (lower === "control" || lower === "ctrl") return "control down";
-          if (lower === "shift") return "shift down";
-          return null;
-        })
-        .filter((m): m is Exclude<typeof m, null> => m !== null);
-      if (mapped.length > 0) {
-        modifierString = ` using {${mapped.join(", ")}}`;
-      }
+  const script = `
+    tell application "System Events"
+      ${pressCommand}${modifierString}
+    end tell
+  `;
+  await execAppleScript(script);
+  return `✅ Pressed simulated key: "${key}"`;
+}
+
+function getWin32SendKeysToken(lowerKey: string, key: string): string {
+  const token = WIN32_SEND_KEYS[lowerKey];
+  if (token !== undefined) return token;
+  return escapeSendKeys(key);
+}
+
+function getWin32ModifierPrefix(modifiers?: string[]): string {
+  let prefix = "";
+  if (modifiers && modifiers.length > 0) {
+    for (const m of modifiers) {
+      const lower = m.toLowerCase();
+      if (lower === "control" || lower === "ctrl") prefix += "^";
+      if (lower === "alt" || lower === "option") prefix += "%";
+      if (lower === "shift") prefix += "+";
     }
-
-    let pressCommand = "";
-    if (lowerKey === "return" || lowerKey === "enter") pressCommand = "key code 36";
-    else if (lowerKey === "tab") pressCommand = "key code 48";
-    else if (lowerKey === "space") pressCommand = "key code 49";
-    else if (lowerKey === "escape" || lowerKey === "esc") pressCommand = "key code 53";
-    else if (lowerKey === "up") pressCommand = "key code 126";
-    else if (lowerKey === "down") pressCommand = "key code 125";
-    else if (lowerKey === "left") pressCommand = "key code 123";
-    else if (lowerKey === "right") pressCommand = "key code 124";
-    else if (lowerKey === "pgdn") pressCommand = "key code 121";
-    else if (lowerKey === "pgup") pressCommand = "key code 116";
-    else if (lowerKey === "home") pressCommand = "key code 115";
-    else if (lowerKey === "end") pressCommand = "key code 119";
-    else {
-      const escapedChar = key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      pressCommand = `keystroke "${escapedChar}"`;
-    }
-
-    const script = `
-      tell application "System Events"
-        ${pressCommand}${modifierString}
-      end tell
-    `;
-    await execAppleScript(script);
-    return `✅ Pressed simulated key: "${key}"`;
   }
+  return prefix;
+}
 
-  // ====== 2. Windows win32 Branch (SendKeys) ======
-  if (platform === "win32") {
-    let sendKeysToken = "";
-    if (lowerKey === "return" || lowerKey === "enter") sendKeysToken = "{ENTER}";
-    else if (lowerKey === "tab") sendKeysToken = "{TAB}";
-    else if (lowerKey === "space") sendKeysToken = " ";
-    else if (lowerKey === "escape" || lowerKey === "esc") sendKeysToken = "{ESC}";
-    else if (lowerKey === "up") sendKeysToken = "{UP}";
-    else if (lowerKey === "down") sendKeysToken = "{DOWN}";
-    else if (lowerKey === "left") sendKeysToken = "{LEFT}";
-    else if (lowerKey === "right") sendKeysToken = "{RIGHT}";
-    else if (lowerKey === "pgdn") sendKeysToken = "{PGDN}";
-    else if (lowerKey === "pgup") sendKeysToken = "{PGUP}";
-    else if (lowerKey === "home") sendKeysToken = "{HOME}";
-    else if (lowerKey === "end") sendKeysToken = "{END}";
-    else {
-      sendKeysToken = escapeSendKeys(key);
-    }
+async function simulateKeyPressWin32(key: string, modifiers?: string[]): Promise<string> {
+  const lowerKey = key.toLowerCase();
+  const sendKeysToken = getWin32SendKeysToken(lowerKey, key);
+  const modifierPrefix = getWin32ModifierPrefix(modifiers);
 
-    let modifierPrefix = "";
-    if (modifiers && modifiers.length > 0) {
-      for (const m of modifiers) {
-        const lower = m.toLowerCase();
-        if (lower === "control" || lower === "ctrl") modifierPrefix += "^";
-        if (lower === "alt" || lower === "option") modifierPrefix += "%";
-        if (lower === "shift") modifierPrefix += "+";
-      }
-    }
+  const cmd = `
+    $ws = New-Object -ComObject WScript.Shell;
+    $ws.SendKeys("${modifierPrefix}${sendKeysToken}");
+  `;
+  await execPowerShell(cmd);
+  return `✅ Pressed simulated key: "${key}"`;
+}
 
-    const cmd = `
-      $ws = New-Object -ComObject WScript.Shell;
-      $ws.SendKeys("${modifierPrefix}${sendKeysToken}");
-    `;
-    await execPowerShell(cmd);
-    return `✅ Pressed simulated key: "${key}"`;
+function getLinuxModifierPrefix(modifiers?: string[]): string {
+  if (!modifiers || modifiers.length === 0) return "";
+  const mapped = modifiers
+    .map((mod) => LINUX_MODIFIERS[mod.toLowerCase()] || null)
+    .filter((m): m is string => m !== null);
+  if (mapped.length > 0) {
+    return mapped.join("+") + "+";
   }
+  return "";
+}
 
-  // ====== 3. Linux Linux Branch (xdotool) ======
+function getLinuxKey(lowerKey: string, key: string): string {
+  const lKey = LINUX_KEYS[lowerKey];
+  if (lKey) return lKey;
+  return key;
+}
+
+async function simulateKeyPressLinux(key: string, modifiers?: string[]): Promise<string> {
+  const lowerKey = key.toLowerCase();
+  const modifierPrefix = getLinuxModifierPrefix(modifiers);
+  const linuxKey = getLinuxKey(lowerKey, key);
+
   try {
-    let modifierPrefix = "";
-    if (modifiers && modifiers.length > 0) {
-      modifierPrefix = modifiers
-        .map((mod) => {
-          const lower = mod.toLowerCase();
-          if (lower === "command" || lower === "cmd") return "super";
-          if (lower === "control" || lower === "ctrl") return "ctrl";
-          if (lower === "alt" || lower === "option") return "alt";
-          if (lower === "shift") return "shift";
-          return null;
-        })
-        .filter((m): m is Exclude<typeof m, null> => m !== null)
-        .join("+") + "+";
-    }
-
-    let linuxKey = key;
-    if (lowerKey === "return" || lowerKey === "enter") linuxKey = "Return";
-    else if (lowerKey === "tab") linuxKey = "Tab";
-    else if (lowerKey === "space") linuxKey = "space";
-    else if (lowerKey === "escape" || lowerKey === "esc") linuxKey = "Escape";
-    else if (lowerKey === "up") linuxKey = "Up";
-    else if (lowerKey === "down") linuxKey = "Down";
-    else if (lowerKey === "left") linuxKey = "Left";
-    else if (lowerKey === "right") linuxKey = "Right";
-    else if (lowerKey === "pgdn") linuxKey = "Page_Down";
-    else if (lowerKey === "pgup") linuxKey = "Page_Up";
-    else if (lowerKey === "home") linuxKey = "Home";
-    else if (lowerKey === "end") linuxKey = "End";
-
     await execShell(`xdotool key "${modifierPrefix}${linuxKey}"`);
     return `✅ Pressed simulated key: "${key}"`;
   } catch (err: any) {
     throw new Error(`Failed to simulate Linux keypress (ensure xdotool is installed): ${err.message}`);
   }
+}
+
+/**
+ * Presses a specific special key or key combo (Cross-Platform).
+ */
+export async function simulateKeyPress(key: string, modifiers?: string[]): Promise<string> {
+  const platform = getPlatform();
+
+  if (platform === "darwin") {
+    return await simulateKeyPressDarwin(key, modifiers);
+  }
+  if (platform === "win32") {
+    return await simulateKeyPressWin32(key, modifiers);
+  }
+  return await simulateKeyPressLinux(key, modifiers);
 }

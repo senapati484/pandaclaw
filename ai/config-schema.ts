@@ -36,7 +36,7 @@ const agentConfigSchema = z.object({
   askFirstPatterns: z.array(z.string()).optional().default([".env", ".git", "package.json", "tsconfig.json"]),
 }).optional();
 
-export const pandaConfigSchema = z.object({
+const pandaConfigSchema = z.object({
   providers: z.object({
     groq: providerSchema,
     openrouter: providerSchema,

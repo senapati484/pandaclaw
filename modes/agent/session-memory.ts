@@ -1,12 +1,5 @@
 import { randomUUID } from "crypto";
-import type {
-  SessionMemory,
-  LearnedConstraint,
-  ErrorPattern,
-  SuccessPattern,
-  ReflectionNote,
-  CachedFile,
-} from "./types";
+import type { SessionMemory, ErrorPattern, SuccessPattern, LearnedConstraint } from "./types";
 
 export class SessionMemoryManager {
   private memory: SessionMemory;
@@ -22,32 +15,6 @@ export class SessionMemoryManager {
       actionsSinceLastReflection: 0,
       reflections: [],
     };
-  }
-
-  /**
-   * Add a learned constraint (e.g., don't modify this file)
-   */
-  addConstraint(
-    type: LearnedConstraint["type"],
-    value: string,
-    reason: string,
-    confidence: number = 0.8
-  ): void {
-    const existing = this.memory.learnedConstraints.find(
-      (c) => c.type === type && c.value === value
-    );
-
-    if (existing) {
-      existing.confidence = Math.min(1, existing.confidence + 0.1);
-      existing.reason = reason;
-    } else {
-      this.memory.learnedConstraints.push({
-        type,
-        value,
-        reason,
-        confidence,
-      });
-    }
   }
 
   /**
@@ -70,20 +37,57 @@ export class SessionMemoryManager {
   }
 
   /**
-   * Get suggestions for a frequently occurring error
+   * Get top error patterns sorted by frequency
    */
-  getErrorSuggestion(pattern: string): string | null {
-    return this.memory.errorPatterns.get(pattern)?.suggestedFix || null;
+  getTopErrorPatterns(limit: number): ErrorPattern[] {
+    return Array.from(this.memory.errorPatterns.values())
+      .sort((a, b) => b.frequency - a.frequency)
+      .slice(0, limit);
   }
 
   /**
-   * Record a successful approach for future reference
+   * Add a learned constraint
    */
-  recordSuccessPattern(
-    description: string,
-    steps: string[],
-    context: string
+  addConstraint(
+    type: "forbidden_path" | "allowed_pattern" | "required_format" | "naming_convention",
+    value: string,
+    reason: string,
+    confidence: number = 1.0
   ): void {
+    this.memory.learnedConstraints.push({
+      type,
+      value,
+      reason,
+      confidence,
+    });
+  }
+
+  /**
+   * Get learned constraints, optionally filtered by type
+   */
+  getConstraints(type?: string): LearnedConstraint[] {
+    if (type) {
+      return this.memory.learnedConstraints.filter((c) => c.type === type);
+    }
+    return this.memory.learnedConstraints;
+  }
+
+  /**
+   * Check if a path violates any constraints
+   */
+  violatesConstraints(path: string): LearnedConstraint | null {
+    for (const c of this.memory.learnedConstraints) {
+      if (c.type === "forbidden_path" && path.includes(c.value)) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Record a successful sequence of steps for a context
+   */
+  recordSuccessPattern(description: string, steps: string[], context: string): void {
     this.memory.successPatterns.push({
       description,
       steps,
@@ -92,39 +96,10 @@ export class SessionMemoryManager {
   }
 
   /**
-   * Cache a file for quick access
+   * Get success patterns for a specific context
    */
-  cacheFile(path: string, content: string, hash: string): void {
-    this.memory.contextCache.set(path, {
-      path,
-      content,
-      hash,
-      readAt: new Date(),
-    });
-  }
-
-  /**
-   * Get cached file if it exists
-   */
-  getCachedFile(path: string): CachedFile | null {
-    return this.memory.contextCache.get(path) || null;
-  }
-
-  /**
-   * Clear old cache entries (older than maxAge ms)
-   */
-  cleanCache(maxAge: number = 5 * 60 * 1000): void {
-    // 5 minutes default
-    const now = new Date();
-    const toDelete: string[] = [];
-
-    this.memory.contextCache.forEach((file, path) => {
-      if (now.getTime() - file.readAt.getTime() > maxAge) {
-        toDelete.push(path);
-      }
-    });
-
-    toDelete.forEach((path) => this.memory.contextCache.delete(path));
+  getSuccessPatternsFor(context: string): SuccessPattern[] {
+    return this.memory.successPatterns.filter((p) => p.context === context);
   }
 
   /**
@@ -138,58 +113,6 @@ export class SessionMemoryManager {
       confidence,
     });
     this.memory.actionsSinceLastReflection = 0;
-  }
-
-  /**
-   * Increment action count since last reflection
-   */
-  incrementActionsSinceReflection(): void {
-    this.memory.actionsSinceLastReflection++;
-  }
-
-  /**
-   * Get constraints of a specific type
-   */
-  getConstraints(type?: LearnedConstraint["type"]): LearnedConstraint[] {
-    if (!type) return this.memory.learnedConstraints;
-    return this.memory.learnedConstraints.filter((c) => c.type === type);
-  }
-
-  /**
-   * Check if a path violates any constraints
-   */
-  violatesConstraints(path: string): LearnedConstraint | null {
-    for (const constraint of this.memory.learnedConstraints) {
-      if (constraint.type === "forbidden_path" && path.includes(constraint.value)) {
-        return constraint;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Get top error patterns by frequency
-   */
-  getTopErrorPatterns(limit: number = 5): ErrorPattern[] {
-    return Array.from(this.memory.errorPatterns.values())
-      .sort((a, b) => b.frequency - a.frequency)
-      .slice(0, limit);
-  }
-
-  /**
-   * Get relevant success patterns for a context
-   */
-  getSuccessPatternsFor(context: string): SuccessPattern[] {
-    return this.memory.successPatterns.filter((p) =>
-      p.context.toLowerCase().includes(context.toLowerCase())
-    );
-  }
-
-  /**
-   * Get recent reflections
-   */
-  getRecentReflections(limit: number = 5): ReflectionNote[] {
-    return this.memory.reflections.slice(-limit);
   }
 
   /**
@@ -217,21 +140,5 @@ export class SessionMemoryManager {
       this.memory.successPatterns = data.successPatterns;
     if (data.reflections)
       this.memory.reflections = data.reflections;
-  }
-
-  /**
-   * Get memory summary for debugging
-   */
-  getSummary(): object {
-    return {
-      sessionId: this.memory.sessionId,
-      createdAt: this.memory.createdAt,
-      constraintCount: this.memory.learnedConstraints.length,
-      errorPatternCount: this.memory.errorPatterns.size,
-      cachedFileCount: this.memory.contextCache.size,
-      successPatternCount: this.memory.successPatterns.length,
-      reflectionCount: this.memory.reflections.length,
-      actionsSinceReflection: this.memory.actionsSinceLastReflection,
-    };
   }
 }

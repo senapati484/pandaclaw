@@ -389,7 +389,7 @@ export interface ToolDefinition {
   execute: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
 }
 
-export interface ToolResult {
+interface ToolResult {
   success: boolean;
   data?: unknown;
   error?: string;

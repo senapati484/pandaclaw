@@ -9,6 +9,39 @@ export interface StreamChunk {
 
 export type StreamHandler = (chunk: StreamChunk) => void;
 
+function parseStreamLine(line: string, onChunk: StreamHandler): void {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith("data: ")) return;
+
+  const data = trimmed.slice(6).trim();
+
+  if (data === "[DONE]") {
+    onChunk({ type: "done" });
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(data);
+    const delta = parsed.choices?.[0]?.delta;
+    if (!delta) return;
+
+    if (delta.content) {
+      onChunk({ type: "text", content: delta.content });
+    }
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        onChunk({
+          type: "tool_call",
+          toolName: tc.function?.name,
+          toolArgs: tc.function?.arguments,
+          toolCallId: tc.id,
+        });
+      }
+    }
+  } catch {}
+}
+
 export async function streamCompletion(
   apiBase: string,
   apiKey: string,
@@ -64,36 +97,7 @@ export async function streamCompletion(
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-
-        const data = trimmed.slice(6).trim();
-
-        if (data === "[DONE]") {
-          onChunk({ type: "done" });
-          continue;
-        }
-
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta;
-          if (!delta) continue;
-
-          if (delta.content) {
-            onChunk({ type: "text", content: delta.content });
-          }
-
-          if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              onChunk({
-                type: "tool_call",
-                toolName: tc.function?.name,
-                toolArgs: tc.function?.arguments,
-                toolCallId: tc.id,
-              });
-            }
-          }
-        } catch {}
+        parseStreamLine(line, onChunk);
       }
     }
   } catch (err: any) {
@@ -107,52 +111,4 @@ export async function streamCompletion(
   onChunk({ type: "done" });
 }
 
-export async function* streamCompletionAsync(
-  apiBase: string,
-  apiKey: string,
-  model: string,
-  messages: any[],
-  options?: {
-    temperature?: number;
-    max_tokens?: number;
-    tools?: any[];
-    signal?: AbortSignal;
-  }
-): AsyncGenerator<StreamChunk> {
-  const resolveFns: Array<(chunk: StreamChunk) => void> = [];
-  let pushResolve: ((chunk: StreamChunk) => void) | null = null;
 
-  const onChunk = (chunk: StreamChunk) => {
-    if (pushResolve) {
-      pushResolve(chunk);
-      pushResolve = null;
-    }
-  };
-
-  const promise = new Promise<void>((resolve) => {
-    const checkDone = () => {
-      if (!pushResolve) {
-        resolve();
-      }
-    };
-
-    const interval = setInterval(checkDone, 100);
-    streamCompletion(apiBase, apiKey, model, messages, (chunk) => {
-      onChunk(chunk);
-      if (chunk.type === "done") {
-        clearInterval(interval);
-        resolve();
-      }
-    }, options);
-  });
-
-  while (true) {
-    const chunk = await new Promise<StreamChunk>((resolve) => {
-      pushResolve = resolve;
-    });
-    if (chunk.type === "done") break;
-    yield chunk;
-  }
-
-  await promise;
-}

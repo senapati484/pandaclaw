@@ -109,138 +109,45 @@ export async function runFastPath(
 
   const { maxTokens, temperature } = config.routing.fast_path;
 
-  // ── Provider fallback chain ──
-  // 1. Groq 8B instant (PRIMARY — free tier, 14.4K req/day)
-  // 2. Groq 70B versatile (fallback — 1K req/day)
-  // 3. OpenRouter fallback models
-  // 4. Nvidia NIM (cloud GPU)
-  // 5. Ollama (local fallback)
-  const chain: Array<() => Promise<{ data: LLMResponse; provider: string } | null>> = [
+  const openRouterHeaders = {
+    "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
+    "X-Title": "PandaClaw",
+  };
+
+  const specs = [
     // ── Groq 8B instant — PRIMARY (14.4K req/day, fast, avoids rate limits) ──
-    () =>
-      tryProvider(
-        config.providers.groq.api_base,
-        config.providers.groq.api_key,
-        config.routing.fast_path.model,   // llama-3.1-8b-instant
-        messages,
-        maxTokens,
-        temperature
-      ),
+    { apiBase: config.providers.groq.api_base, apiKey: config.providers.groq.api_key, model: config.routing.fast_path.model },
     // ── Groq 70B versatile — heavy fallback (1K req/day, better reasoning) ──
-    () =>
-      tryProvider(
-        config.providers.groq.api_base,
-        config.providers.groq.api_key,
-        "llama-3.3-70b-versatile",
-        messages,
-        maxTokens,
-        temperature
-      ),
+    { apiBase: config.providers.groq.api_base, apiKey: config.providers.groq.api_key, model: "llama-3.3-70b-versatile" },
     // ── OpenRouter Gemma 4 26B A4B MoE — ultra-fast (only 3.8B active params) ──
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "google/gemma-4-26b-a4b-it:free",   // 262K ctx, MoE = very fast
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "google/gemma-4-26b-a4b-it:free", extraHeaders: openRouterHeaders },
     // ── OpenRouter Qwen3 Next 80B — 262K context, structured outputs ───────
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "qwen/qwen3-next-80b-a3b-instruct:free",
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "qwen/qwen3-next-80b-a3b-instruct:free", extraHeaders: openRouterHeaders },
     // ── OpenRouter Gemma 4 31B — 262K context, reasoning ──────────────────
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "google/gemma-4-31b-it:free",
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "google/gemma-4-31b-it:free", extraHeaders: openRouterHeaders },
     // ── OpenRouter Nemotron 3 Super 120B — 1M ctx, NVIDIA reasoning ────────
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "nvidia/nemotron-3-super-120b-a12b:free", extraHeaders: openRouterHeaders },
     // ── OpenRouter Qwen3 Coder 480B — 1M ctx, best free model overall ──────
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "qwen/qwen3-coder:free",
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "qwen/qwen3-coder:free", extraHeaders: openRouterHeaders },
     // ── OpenRouter Llama 3.3 70B — 131K ctx, battle-tested ─────────────────
-    () =>
-      tryProvider(
-        config.providers.openrouter.api_base,
-        config.providers.openrouter.api_key,
-        "meta-llama/llama-3.3-70b-instruct:free",
-        messages,
-        maxTokens,
-        temperature,
-        {
-          "HTTP-Referer": "https://github.com/senapati484/pandaclaw",
-          "X-Title": "PandaClaw",
-        }
-      ),
+    { apiBase: config.providers.openrouter.api_base, apiKey: config.providers.openrouter.api_key, model: "meta-llama/llama-3.3-70b-instruct:free", extraHeaders: openRouterHeaders },
     // ── NIM — cloud GPU fallback ────────────────────────────────────
-    () =>
-      tryProvider(
-        config.providers.nvidia_nim.api_base,
-        config.providers.nvidia_nim.api_key,
-        NIM_MODELS.chat_fast,   // meta/llama-3.1-70b-instruct
-        messages,
-        maxTokens,
-        temperature
-      ),
+    { apiBase: config.providers.nvidia_nim.api_base, apiKey: config.providers.nvidia_nim.api_key, model: NIM_MODELS.chat_fast },
     // ── Ollama — local fallback, always available if running ────────────
-    () =>
-      tryProvider(
-        config.providers.ollama?.api_base ?? "http://127.0.0.1:11434/v1",
-        config.providers.ollama?.api_key ?? "ollama",
-        "qwen3:0.6b",
-        messages,
-        maxTokens,
-        temperature
-      ),
+    { apiBase: config.providers.ollama?.api_base ?? "http://127.0.0.1:11434/v1", apiKey: config.providers.ollama?.api_key ?? "ollama", model: "qwen3:0.6b" }
   ];
+
+  const chain = specs.map(spec => () =>
+    tryProvider(
+      spec.apiBase,
+      spec.apiKey,
+      spec.model,
+      messages,
+      maxTokens,
+      temperature,
+      spec.extraHeaders
+    )
+  );
 
   let lastError: Error | null = null;
   let usedProvider = "groq";

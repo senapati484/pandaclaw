@@ -1,5 +1,5 @@
 import type { Task, ValidationResult } from "./types";
-import { SessionMemoryManager } from "./session-memory";
+import { SessionMemoryManager } from "../agent/session-memory.js";
 
 export class PlanValidator {
   /**
@@ -50,7 +50,7 @@ export class PlanValidator {
 
     // 3. Constraint Compliance Checks (e.g. from SessionMemory constraints)
     if (memory) {
-      const constraints = memory.getSummary() as any;
+      const constraints = memory.getConstraints() as any;
       // We can query constraints and log violations here if applicable
       // As a local pattern check, if a task modifies package.json but doesn't require approval, issue warning
       for (const task of tasks) {

@@ -1,7 +1,7 @@
 import type { LLMCompletionOptions, LLMCompletionResult } from "./adapter.js";
 
 /** Sentinel error for HTTP 429 — bypasses retry logic to immediately trigger provider fallback */
-export class RateLimitError extends Error {
+class RateLimitError extends Error {
   constructor(url: string, retryAfterSec: number) {
     super(
       `Rate limit (429) on ${url}${retryAfterSec > 0 ? ` (retry-after: ${retryAfterSec}s)` : ""}. Skipping to next provider.`
@@ -68,70 +68,54 @@ export function sanitizeMessages(messages: any[]): any[] {
   });
 }
 
-export function patchGroqToolCall(failedGeneration: string): any | null {
-  const match = failedGeneration.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) ||
-    failedGeneration.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
+function parseFunctionTag(input: string): { name: string; args: string } | null {
+  const match = input.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) ||
+    input.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
   if (!match || !match[1] || !match[2]) return null;
 
-  const toolName = match[1];
-  let toolArgs = match[2].trim();
+  const name = match[1];
+  let args = match[2].trim();
 
-  if (toolArgs.includes("</function>")) {
-    toolArgs = toolArgs.substring(0, toolArgs.indexOf("</function>")).trim();
+  if (args.includes("</function>")) {
+    args = args.substring(0, args.indexOf("</function>")).trim();
   }
-  if (toolArgs.startsWith("```")) {
-    toolArgs = toolArgs.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
+  if (args.startsWith("```")) {
+    args = args.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
   }
 
-  try {
-    JSON.parse(toolArgs);
-    return createFakeCompletionsPayload(toolName, toolArgs);
-  } catch {
-    const start = toolArgs.indexOf("{");
-    const end = toolArgs.lastIndexOf("}");
-    if (start !== -1 && end !== -1) {
-      const clean = toolArgs.substring(start, end + 1);
-      try {
-        JSON.parse(clean);
-        return createFakeCompletionsPayload(toolName, clean);
-      } catch {}
+  const tryParse = (str: string): boolean => {
+    try {
+      JSON.parse(str);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (tryParse(args)) {
+    return { name, args };
+  }
+
+  const start = args.indexOf("{");
+  const end = args.lastIndexOf("}");
+  if (start !== -1 && end !== -1) {
+    const clean = args.substring(start, end + 1);
+    if (tryParse(clean)) {
+      return { name, args: clean };
     }
   }
 
   return null;
 }
 
+export function patchGroqToolCall(failedGeneration: string): any | null {
+  const parsed = parseFunctionTag(failedGeneration);
+  return parsed ? createFakeCompletionsPayload(parsed.name, parsed.args) : null;
+}
+
 export function parseTextToolCall(content: string): { name: string; arguments: string } | null {
-  const match = content.match(/<function=([\w_]+)>?\s*(\{[\s\S]*\})/i) ||
-    content.match(/<function=([\w_]+)\s*(\{[\s\S]*\})/i);
-  if (!match || !match[1] || !match[2]) return null;
-
-  const toolName = match[1];
-  let toolArgs = match[2].trim();
-
-  if (toolArgs.includes("</function>")) {
-    toolArgs = toolArgs.substring(0, toolArgs.indexOf("</function>")).trim();
-  }
-  if (toolArgs.startsWith("```")) {
-    toolArgs = toolArgs.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "").trim();
-  }
-
-  try {
-    JSON.parse(toolArgs);
-    return { name: toolName, arguments: toolArgs };
-  } catch {
-    const start = toolArgs.indexOf("{");
-    const end = toolArgs.lastIndexOf("}");
-    if (start !== -1 && end !== -1) {
-      const clean = toolArgs.substring(start, end + 1);
-      try {
-        JSON.parse(clean);
-        return { name: toolName, arguments: clean };
-      } catch {}
-    }
-  }
-
-  return null;
+  const parsed = parseFunctionTag(content);
+  return parsed ? { name: parsed.name, arguments: parsed.args } : null;
 }
 
 /**

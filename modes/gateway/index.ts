@@ -7,9 +7,11 @@ import { SlackAdapter } from "./adapters/slack.js";
 import { WebChatAdapter } from "./adapters/webchat.js";
 import type { ToolContext } from "../../modes/agent/types.js";
 import { runToolAgent } from "../ask/tool-agent.js";
-import { runPandaMode } from "../ask/panda-mode.js";
 import { classifyRoute } from "../ask/classifier.js";
 import chalk from "chalk";
+
+/** Trigger background memory consolidation every N messages to keep memory lean. */
+const CONSOLIDATE_EVERY_N_MESSAGES = 3;
 
 export class Gateway {
   private config = readConfig();
@@ -56,186 +58,208 @@ export class Gateway {
     }
   }
 
-  private async routeMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
+  private async handleVisionMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
     const chatId = msg.chatId;
+    try {
+      const result = await runVisionPipeline(msg.photoBuffer!, msg.mimeType!, msg.text ?? "Describe this image");
+      let reply = `🐼 *Vision Analysis*\n_Type: ${result.contentType}_\n\n`;
 
-    // ── Photo → Vision pipeline ──────────────────────────────────────────
-    if (msg.photoBuffer && msg.mimeType) {
-      try {
-        const result = await runVisionPipeline(msg.photoBuffer, msg.mimeType, msg.text ?? "Describe this image");
-        let reply = `🐼 *Vision Analysis*\n_Type: ${result.contentType}_\n\n`;
-
-        switch (result.action.type) {
-          case "describe":   reply += result.action.summary; break;
-          case "diagnose":   reply += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`; break;
-          case "navigate":   reply += result.action.instruction; break;
-          case "code_review": reply += result.action.findings.map((f) => `• ${f.message}`).join("\n"); break;
-          case "extract":    reply += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```"; break;
-          default:           reply += JSON.stringify(result.action);
-        }
-
-        await adapter.sendMessage(chatId, reply);
-      } catch (err: any) {
-        await adapter.sendMessage(chatId, `❌ Vision Error: ${err.message}`);
+      switch (result.action.type) {
+        case "describe":   reply += result.action.summary; break;
+        case "diagnose":   reply += `*Issue:* ${result.action.issue}\n\n*Fix:* ${result.action.fix}`; break;
+        case "navigate":   reply += result.action.instruction; break;
+        case "code_review": reply += result.action.findings.map((f) => `• ${f.message}`).join("\n"); break;
+        case "extract":    reply += "```json\n" + JSON.stringify(result.action.data, null, 2) + "\n```"; break;
+        default:           reply += JSON.stringify(result.action);
       }
-      return;
+
+      await adapter.sendMessage(chatId, reply);
+    } catch (err: any) {
+      await adapter.sendMessage(chatId, `❌ Vision Error: ${err.message}`);
+    }
+  }
+
+  private async handleGatewayCommand(adapter: ChannelAdapter, chatId: string, userText: string): Promise<boolean> {
+    if (userText === "/start") {
+      await adapter.sendMessage(
+        chatId,
+        `🐼 *PandaClaw Agent is online!*\n\n` +
+          `I have *direct access* to your local machine:\n` +
+          `• 📁 Read \& write files\n` +
+          `• 📂 List directories\n` +
+          `• ⚡ Run code \& commands\n` +
+          `• 🔍 Search the web\n` +
+          `• 👁 Analyze images\n\n` +
+          `Just tell me what to do — I'll do it!`
+      );
+      return true;
     }
 
-    // ── Text → Agentic tool loop ─────────────────────────────────────────
-    if (msg.text) {
-      const userText = msg.text;
+    if (userText === "/help") {
+      await adapter.sendMessage(
+        chatId,
+        `🐼 *PandaClaw Help*\n\n` +
+          `*File operations:*\n` +
+          `  "read testing.txt"\n` +
+          `  "write my name to notes.txt"\n` +
+          `  "list all files in the project"\n\n` +
+          `*Run commands:*\n` +
+          `  "run: ls -la"\n` +
+          `  "execute: echo hello world"\n\n` +
+          `*Search:*\n` +
+          `  "search for how to use Bun"\n\n` +
+          `*Vision:*\n` +
+          `  Send any photo for AI analysis\n\n` +
+          `*/start* - restart\n` +
+          `*/status* - show machine info`
+      );
+      return true;
+    }
 
-      // /start and /help commands
-      if (userText === "/start") {
-        await adapter.sendMessage(
-          chatId,
-          `🐼 *PandaClaw Agent is online!*\n\n` +
-            `I have *direct access* to your local machine:\n` +
-            `• 📁 Read \& write files\n` +
-            `• 📂 List directories\n` +
-            `• ⚡ Run code \& commands\n` +
-            `• 🔍 Search the web\n` +
-            `• 👁 Analyze images\n\n` +
-            `Just tell me what to do — I'll do it!`
-        );
-        return;
-      }
+    if (userText === "/status") {
+      const cwd = process.cwd();
+      const p = this.config.providers as Record<string, { api_key?: string; api_base?: string } | undefined>;
+      const providerLines = Object.entries(p)
+        .map(([name, cfg]) => `• ${name}: ${cfg?.api_key || cfg?.api_base ? "✅" : "❌"}`)
+        .join("\n");
+      await adapter.sendMessage(
+        chatId,
+        `🐼 *PandaClaw Status*\n\n` +
+          `• Workspace: \`${cwd}\`\n` +
+          providerLines
+      );
+      return true;
+    }
 
-      if (userText === "/help") {
-        await adapter.sendMessage(
-          chatId,
-          `🐼 *PandaClaw Help*\n\n` +
-            `*File operations:*\n` +
-            `  "read testing.txt"\n` +
-            `  "write my name to notes.txt"\n` +
-            `  "list all files in the project"\n\n` +
-            `*Run commands:*\n` +
-            `  "run: ls -la"\n` +
-            `  "execute: echo hello world"\n\n` +
-            `*Search:*\n` +
-            `  "search for how to use Bun"\n\n` +
-            `*Vision:*\n` +
-            `  Send any photo for AI analysis\n\n` +
-            `*/start* - restart\n` +
-            `*/status* - show machine info`
-        );
-        return;
-      }
+    return false;
+  }
 
-      if (userText === "/status") {
-        const cwd = process.cwd();
-        await adapter.sendMessage(
-          chatId,
-          `🐼 *PandaClaw Status*\n\n` +
-            `• Workspace: \`${cwd}\`\n` +
-            `• Groq: ${this.config.providers.groq.api_key ? "✅" : "❌"}\n` +
-            `• OpenRouter: ${this.config.providers.openrouter.api_key ? "✅" : "❌"}\n` +
-            `• Nvidia NIM: ${this.config.providers.nvidia_nim.api_key ? "✅" : "❌"}\n` +
-            `• Telegram: ✅ connected`
-        );
-        return;
-      }
+  private async runAgentRoute(
+    userText: string,
+    route: string,
+    toolCtx: ToolContext,
+    chatId: string
+  ): Promise<{ answer: string; toolsUsed: string[]; durationMs: number }> {
+    if (route === "action") {
+      return await runToolAgent(userText, this.config, toolCtx);
+    }
 
-      // ── Build a ToolContext for this Telegram user (full device access) ─
-      const toolCtx: ToolContext = {
-        userId: msg.senderId,
-        channel: "telegram",
-        workspacePath: "/",          // ← entire device, not just pandaclaw dir
-        requestConsent: async () => true, // paired user is pre-authorized
+    if (route === "complex") {
+      const { runPandaMode } = await import("../ask/panda-mode.js");
+      const task = {
+        id: crypto.randomUUID(),
+        type: "complex" as const,
+        input: userText,
+        conversationHistory: [],
+        createdAt: new Date(),
       };
+      const pandaResult = await runPandaMode(task, this.config);
+      return {
+        answer: pandaResult.answer,
+        toolsUsed: [],
+        durationMs: pandaResult.durationMs,
+      };
+    }
+
+    // default: simple fast path
+    const { runFastPath } = await import("../ask/fast-path.js");
+    const task = {
+      id: crypto.randomUUID(),
+      type: "simple" as const,
+      input: userText,
+      conversationHistory: [],
+      createdAt: new Date(),
+    };
+    const fastResult = await runFastPath(task, this.config);
+    const result = {
+      answer: fastResult.answer,
+      toolsUsed: [] as string[],
+      durationMs: fastResult.durationMs,
+    };
+
+    try {
+      saveChatMessage(chatId, "user", userText);
+      saveChatMessage(chatId, "assistant", result.answer);
+    } catch {}
+
+    return result;
+  }
+
+  private async executeAgentRoute(adapter: ChannelAdapter, chatId: string, msg: ChannelMessage): Promise<void> {
+    const userText = msg.text!;
+    // Derive channel name from adapter class (e.g. TelegramAdapter → "telegram")
+    const channelName = adapter.constructor.name
+      .replace(/Adapter$/i, "")
+      .toLowerCase() as ToolContext["channel"];
+    const toolCtx: ToolContext = {
+      userId: msg.senderId,
+      channel: channelName,
+      workspacePath: "/",
+      requestConsent: async () => true,
+    };
+
+    try {
+      console.log(chalk.hex("#5b4d9e")(`\n🐼 [Telegram] ${msg.senderName}: ${userText.slice(0, 80)}`));
+
+      const route = classifyRoute(userText);
+      console.log(chalk.gray(`  Route: ${route}`));
+
+      const result = await this.runAgentRoute(userText, route, toolCtx, chatId);
+
+      const toolBadge =
+        result.toolsUsed.length > 0
+          ? `\n\n_🔧 tools: ${result.toolsUsed.join(", ")} · ${result.durationMs}ms_`
+          : `\n\n_⚡ ${result.durationMs}ms_`;
+
+      await adapter.sendMessage(chatId, result.answer + toolBadge);
+
+      this.messageCounter++;
+      if (this.messageCounter % CONSOLIDATE_EVERY_N_MESSAGES === 0) {
+        const { MemoryConsolidator } = await import("../../memory/consolidator.js");
+        const consolidator = new MemoryConsolidator(process.cwd());
+        consolidator.consolidate(this.config)
+          .then((summary) => console.log(chalk.gray(`  🐼 [Memory Background Consolidator] ${summary}`)))
+          .catch((err) => console.error(chalk.red(`  🐼 [Memory Background Consolidator Error] ${err.message}`)));
+      }
 
       try {
-        // Log to console
-        console.log(chalk.hex("#5b4d9e")(`\n🐼 [Telegram] ${msg.senderName}: ${userText.slice(0, 80)}`));
+        saveToMemory({
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          role: "user",
+          content: userText,
+          importance: result.toolsUsed.length > 0 ? "high" : "low",
+        });
+      } catch {}
 
-        // 3-way routing:
-        //   action  → runToolAgent (file ops, code exec, alarms, memory)
-        //   complex → runPandaMode (deep reasoning)
-        //   simple  → runFastPath (quick factual answers)
-        const route = classifyRoute(userText);
-        console.log(chalk.gray(`  Route: ${route}`));
-
-        let result;
-        if (route === "action") {
-          result = await runToolAgent(userText, this.config, toolCtx);
-        } else if (route === "complex") {
-          const { runPandaMode } = await import("../ask/panda-mode.js");
-          const task = {
-            id: crypto.randomUUID(),
-            type: "complex" as const,
-            input: userText,
-            conversationHistory: [],
-            createdAt: new Date(),
-          };
-          const pandaResult = await runPandaMode(task, this.config);
-          result = {
-            answer: pandaResult.answer,
-            toolsUsed: [] as string[],
-            durationMs: pandaResult.durationMs,
-          };
-        } else {
-          // Simple → fast path (Groq direct, no tool loop)
-          const { runFastPath } = await import("../ask/fast-path.js");
-          const task = {
-            id: crypto.randomUUID(),
-            type: "simple" as const,
-            input: userText,
-            conversationHistory: [],
-            createdAt: new Date(),
-          };
-          const fastResult = await runFastPath(task, this.config);
-          result = {
-            answer: fastResult.answer,
-            toolsUsed: [] as string[],
-            durationMs: fastResult.durationMs,
-          };
-
-          // Save simple turns to persistent chat history
-          try {
-            saveChatMessage(chatId, "user", userText);
-            saveChatMessage(chatId, "assistant", result.answer);
-          } catch {}
-        }
-
-        const toolBadge =
-          result.toolsUsed.length > 0
-            ? `\n\n_🔧 tools: ${result.toolsUsed.join(", ")} · ${result.durationMs}ms_`
-            : `\n\n_⚡ ${result.durationMs}ms_`;
-
-        await adapter.sendMessage(chatId, result.answer + toolBadge);
-
-        // Increment message counter and trigger background semantic memory consolidation every 3 turns
-        this.messageCounter++;
-        if (this.messageCounter % 3 === 0) {
-          const { MemoryConsolidator } = await import("../../memory/consolidator.js");
-          const consolidator = new MemoryConsolidator(process.cwd());
-          consolidator.consolidate(this.config)
-            .then((summary) => console.log(chalk.gray(`  🐼 [Memory Background Consolidator] ${summary}`)))
-            .catch((err) => console.error(chalk.red(`  🐼 [Memory Background Consolidator Error] ${err.message}`)));
-        }
-
-        // Persist to memory
-        try {
-          saveToMemory({
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            role: "user",
-            content: userText,
-            importance: result.toolsUsed.length > 0 ? "high" : "low",
-          });
-        } catch {}
-
-      } catch (err: any) {
-        const raw: string = err.message ?? "";
-        let friendly = `❌ Error: ${raw || "Unknown error occurred"}`;
-        if (raw.includes("429") || raw.toLowerCase().includes("rate limit")) {
-          friendly = "⏳ *Rate limit hit* — AI providers are busy. Please wait a moment!";
-        } else if (raw.includes("All providers failed") || raw.toLowerCase().includes("unreachable")) {
-          friendly = "🌐 *All AI providers unreachable.* Check your internet or API keys.";
-        }
-        console.error(chalk.red(`[Gateway error] ${raw}`));
-        await adapter.sendMessage(chatId, friendly);
+    } catch (err: any) {
+      const raw: string = err.message ?? "";
+      let friendly = `❌ Error: ${raw || "Unknown error occurred"}`;
+      if (raw.includes("429") || raw.toLowerCase().includes("rate limit")) {
+        friendly = "⏳ *Rate limit hit* — AI providers are busy. Please wait a moment!";
+      } else if (raw.includes("All providers failed") || raw.toLowerCase().includes("unreachable")) {
+        friendly = "🌐 *All AI providers unreachable.* Check your internet or API keys.";
       }
+      console.error(chalk.red(`[Gateway error] ${raw}`));
+      await adapter.sendMessage(chatId, friendly);
+    }
+  }
+
+  private async handleTextMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
+    const chatId = msg.chatId;
+    const userText = msg.text!;
+
+    const isCommand = await this.handleGatewayCommand(adapter, chatId, userText);
+    if (isCommand) return;
+
+    await this.executeAgentRoute(adapter, chatId, msg);
+  }
+
+  private async routeMessage(adapter: ChannelAdapter, msg: ChannelMessage): Promise<void> {
+    if (msg.photoBuffer && msg.mimeType) {
+      await this.handleVisionMessage(adapter, msg);
+    } else if (msg.text) {
+      await this.handleTextMessage(adapter, msg);
     }
   }
 }

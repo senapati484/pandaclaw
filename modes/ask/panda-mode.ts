@@ -10,6 +10,80 @@ interface LLMResponse {
   usage?: { total_tokens: number };
 }
 
+function buildReasonMessages(
+  input: string,
+  history: any[],
+  isCodeRequest: boolean
+): any[] {
+  const codeQualityAddendum = isCodeRequest
+    ? `
+
+CODE QUALITY REQUIREMENTS (mandatory for this request):
+- All paths must be dynamic (os.path.expanduser, $HOME, os.homedir()) — NEVER hardcode /home/user or C:\\Users\\...
+- Wrap all IO and network calls in try/except (Python) or try/catch (Node/Bun)
+- Shell scripts must start with "set -euo pipefail"
+- Scripts accepting user input must detect if stdin is a TTY (sys.stdin.isatty() / process.stdin.isTTY) and include a non-interactive fallback that runs without crashing when stdin is empty
+- Add a shebang line to all scripts (#!/usr/bin/env python3 or #!/usr/bin/env bash)
+- Python: use specific exception types, never bare except
+- After writing code, state that it should be verified by running it`
+    : "";
+
+  return [
+    {
+      role: "system",
+      content: `You are PandaClaw, a thoughtful AI agent.
+For complex requests: think step by step before answering.
+Put your reasoning in <think>...</think> tags, then give your final answer.${codeQualityAddendum}`,
+    },
+    // Last 4 messages for context
+    ...history.slice(-4),
+    { role: "user", content: input },
+  ];
+}
+
+async function verifyAnswer(
+  input: string,
+  answer: string,
+  groqKey: string,
+  apiBase: string,
+  fastModel: string
+): Promise<{ verified: boolean; answer: string }> {
+  try {
+    const verifyPrompt = `The user asked: "${input}"
+
+An agent gave this answer:
+${answer}
+
+Is this answer complete and correct?
+Reply EXACTLY with:
+PASS   — if complete and correct
+FIXED: <corrected answer>   — if something is missing or wrong`;
+
+    const verifyRes = await fetch(`${apiBase}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${groqKey}`,
+      },
+      body: JSON.stringify({
+        model: fastModel,
+        messages: [{ role: "user", content: verifyPrompt }],
+        max_tokens: 2048,
+        temperature: 0,
+      }),
+    });
+
+    if (verifyRes.ok) {
+      const verifyData = (await verifyRes.json()) as LLMResponse;
+      const verdict = verifyData.choices[0]?.message?.content ?? "";
+      const verified = verdict.startsWith("PASS");
+      const verifiedAnswer = verified ? answer : verdict.replace(/^FIXED:\s*/i, "").trim();
+      return { verified, answer: verifiedAnswer };
+    }
+  } catch {}
+  return { verified: false, answer };
+}
+
 export async function runPandaMode(
   task: AskTask,
   config: PandaConfig
@@ -35,36 +109,11 @@ export async function runPandaMode(
     "openai/gpt-oss-120b:free",                      // GPT-OSS 120B — strong fallback
   ];
 
-  // ── STEP 1: REASON — try each model in turn ──
-
   // Detect if the request is code-related so we can inject quality heuristics
   const codeKeywords = /\b(write|create|generate|make|build|implement|code|script|program|function|class|module|fix|refactor|debug|edit)\b/i;
   const isCodeRequest = codeKeywords.test(task.input);
 
-  const codeQualityAddendum = isCodeRequest
-    ? `
-
-CODE QUALITY REQUIREMENTS (mandatory for this request):
-- All paths must be dynamic (os.path.expanduser, $HOME, os.homedir()) — NEVER hardcode /home/user or C:\\Users\\...
-- Wrap all IO and network calls in try/except (Python) or try/catch (Node/Bun)
-- Shell scripts must start with "set -euo pipefail"
-- Scripts accepting user input must detect if stdin is a TTY (sys.stdin.isatty() / process.stdin.isTTY) and include a non-interactive fallback that runs without crashing when stdin is empty
-- Add a shebang line to all scripts (#!/usr/bin/env python3 or #!/usr/bin/env bash)
-- Python: use specific exception types, never bare except
-- After writing code, state that it should be verified by running it`
-    : "";
-
-  const reasonMessages = [
-    {
-      role: "system",
-      content: `You are PandaClaw, a thoughtful AI agent.
-For complex requests: think step by step before answering.
-Put your reasoning in <think>...</think> tags, then give your final answer.${codeQualityAddendum}`,
-    },
-    // Last 4 messages for context
-    ...task.conversationHistory.slice(-4),
-    { role: "user", content: task.input },
-  ];
+  const reasonMessages = buildReasonMessages(task.input, task.conversationHistory, isCodeRequest);
 
   let rawResponse: string = "";
   let tokensUsed = 0;
@@ -100,7 +149,6 @@ Put your reasoning in <think>...</think> tags, then give your final answer.${cod
       break; // Success — stop trying fallbacks
     } catch (err: any) {
       console.warn(`[panda-mode] ${pandaModel} failed: ${err.message?.slice(0, 80)}`);
-      // Continue to next fallback
     }
   }
 
@@ -116,46 +164,20 @@ Put your reasoning in <think>...</think> tags, then give your final answer.${cod
     ? rawResponse.split("</think>").slice(1).join("</think>").trim()
     : rawResponse.trim();
 
-  // ── STEP 2: VERIFY — Groq fast second opinion (best-effort, skipped if rate-limited) ──
+  // STEP 2: VERIFY — Groq fast second opinion (best-effort, skipped if rate-limited)
   let verified = false;
   let verifiedAnswer = finalAnswer;
 
   if (groqKey) {
-    try {
-      const verifyPrompt = `The user asked: "${task.input}"
-
-An agent gave this answer:
-${finalAnswer}
-
-Is this answer complete and correct?
-Reply EXACTLY with:
-PASS   — if complete and correct
-FIXED: <corrected answer>   — if something is missing or wrong`;
-
-      const verifyRes = await fetch(`${config.providers.groq.api_base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${groqKey}`,
-        },
-        body: JSON.stringify({
-          model: fastModel,
-          messages: [{ role: "user", content: verifyPrompt }],
-          max_tokens: 2048,
-          temperature: 0,
-        }),
-      });
-
-      if (verifyRes.ok) {
-        const verifyData = (await verifyRes.json()) as LLMResponse;
-        const verdict = verifyData.choices[0]?.message?.content ?? "";
-        verified = verdict.startsWith("PASS");
-        verifiedAnswer = verified ? finalAnswer : verdict.replace(/^FIXED:\s*/i, "").trim();
-      }
-      // If Groq returns 429/non-ok, just skip verification — answer stands as-is
-    } catch {
-      // Verification failed — use original answer
-    }
+    const verification = await verifyAnswer(
+      task.input,
+      finalAnswer,
+      groqKey,
+      config.providers.groq.api_base,
+      fastModel
+    );
+    verified = verification.verified;
+    verifiedAnswer = verification.answer;
   }
 
   return {

@@ -6,7 +6,7 @@ import { classifyRoute } from "../modes/ask/classifier.js";
 import { initProviders } from "../ai/llm.js";
 import { readConfig } from "../ai/ai.config.js";
 import path from "path";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync } from "fs";
 
 const config = readConfig();
 initProviders(config);
@@ -51,6 +51,99 @@ function createSSEStream(handler: (controller: ReadableStreamDefaultController, 
   });
 }
 
+function handleStaticFile(pathname: string): Response | null {
+  const publicPath = path.join(__dirname, "public");
+  if (pathname === "/" || pathname === "/index.html") {
+    return new Response(readFileSync(path.join(publicPath, "index.html")), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+  if (pathname === "/app.js") {
+    return new Response(readFileSync(path.join(publicPath, "app.js")), {
+      headers: { "Content-Type": "application/javascript" },
+    });
+  }
+  if (pathname === "/app.css") {
+    return new Response(readFileSync(path.join(publicPath, "app.css")), {
+      headers: { "Content-Type": "text/css" },
+    });
+  }
+  return null;
+}
+
+async function handleApiMessage(req: Request): Promise<Response> {
+  const body: any = await req.json();
+  broadcastLog({ type: "input", text: body.text });
+
+  const route = classifyRoute(body.text);
+  const ctx = { userId: body.chatId || "web_default", channel: "web" as const, workspacePath: "/", requestConsent: async () => true };
+
+  let answer: string;
+  if (route === "action") {
+    const { runToolAgent } = await import("../modes/ask/tool-agent.js");
+    const result = await runToolAgent(body.text, config, ctx);
+    answer = result.answer;
+  } else if (route === "complex") {
+    const { runPandaMode } = await import("../modes/ask/panda-mode.js");
+    const task = { id: crypto.randomUUID(), type: "complex" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
+    const result = await runPandaMode(task, config);
+    answer = result.answer;
+  } else {
+    const { runFastPath } = await import("../modes/ask/fast-path.js");
+    const task = { id: crypto.randomUUID(), type: "simple" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
+    const result = await runFastPath(task, config);
+    answer = result.answer;
+  }
+
+  broadcastLog({ type: "output", text: answer });
+  return new Response(JSON.stringify({ reply: answer }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleApiMessageStream(req: Request): Promise<Response> {
+  const body: any = await req.json();
+  const chatId = body.chatId || "web_default";
+  broadcastLog({ type: "input", text: body.text });
+
+  return createSSEStream(async (controller, encoder) => {
+    const route = classifyRoute(body.text);
+
+    if (route === "simple") {
+      const { runFastPath } = await import("../modes/ask/fast-path.js");
+      const task = { id: crypto.randomUUID(), type: "simple" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
+      const result = await runFastPath(task, config);
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ t: result.answer })}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    } else {
+      const { runToolAgent } = await import("../modes/ask/tool-agent.js");
+      const ctx = { userId: chatId, channel: "web" as const, workspacePath: "/", requestConsent: async () => true };
+
+      await runToolAgent(body.text, config, ctx, (chunk: any) => {
+        if (chunk.type === "progress") {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ p: chunk.text })}\n\n`));
+        } else if (chunk.type === "text") {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ t: chunk.text })}\n\n`));
+        }
+      });
+
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    }
+
+    broadcastLog({ type: "output", text: `[streamed response]` });
+  });
+}
+
+async function handleApiCanvas(req: Request): Promise<Response> {
+  const body: any = await req.json();
+  broadcastLog({ type: "canvas_update", action: body.action, data: body.data });
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 const server = Bun.serve({
   port: PORT,
   fetch(req, server) {
@@ -64,100 +157,22 @@ const server = Bun.serve({
     }
 
     // Static files routing
-    const publicPath = path.join(__dirname, "public");
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      return new Response(readFileSync(path.join(publicPath, "index.html")), {
-        headers: { "Content-Type": "text/html" },
-      });
-    }
-    if (url.pathname === "/app.js") {
-      return new Response(readFileSync(path.join(publicPath, "app.js")), {
-        headers: { "Content-Type": "application/javascript" },
-      });
-    }
-    if (url.pathname === "/app.css") {
-      return new Response(readFileSync(path.join(publicPath, "app.css")), {
-        headers: { "Content-Type": "text/css" },
-      });
-    }
+    const staticRes = handleStaticFile(url.pathname);
+    if (staticRes) return staticRes;
 
     // WebChat Endpoint (non-streaming - backward compatible)
     if (url.pathname === "/api/message" && req.method === "POST") {
-      return req.json().then(async (body: any) => {
-        broadcastLog({ type: "input", text: body.text });
-
-        const route = classifyRoute(body.text);
-        const ctx = { userId: body.chatId || "web_default", channel: "web" as const, workspacePath: "/", requestConsent: async () => true };
-
-        let answer: string;
-        if (route === "action") {
-          const { runToolAgent } = await import("../modes/ask/tool-agent.js");
-          const result = await runToolAgent(body.text, config, ctx);
-          answer = result.answer;
-        } else if (route === "complex") {
-          const { runPandaMode } = await import("../modes/ask/panda-mode.js");
-          const task = { id: crypto.randomUUID(), type: "complex" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
-          const result = await runPandaMode(task, config);
-          answer = result.answer;
-        } else {
-          const { runFastPath } = await import("../modes/ask/fast-path.js");
-          const task = { id: crypto.randomUUID(), type: "simple" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
-          const result = await runFastPath(task, config);
-          answer = result.answer;
-        }
-
-        broadcastLog({ type: "output", text: answer });
-        return new Response(JSON.stringify({ reply: answer }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      });
+      return handleApiMessage(req);
     }
 
     // WebChat Streaming Endpoint (SSE)
     if (url.pathname === "/api/message/stream" && req.method === "POST") {
-      return req.json().then((body: any) => {
-        const chatId = body.chatId || "web_default";
-        broadcastLog({ type: "input", text: body.text });
-
-        return createSSEStream(async (controller, encoder) => {
-          const route = classifyRoute(body.text);
-
-          if (route === "simple") {
-            const { runFastPath } = await import("../modes/ask/fast-path.js");
-            const task = { id: crypto.randomUUID(), type: "simple" as const, input: body.text, conversationHistory: [], createdAt: new Date() };
-            const result = await runFastPath(task, config);
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ t: result.answer })}\n\n`));
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
-          } else {
-            const { runToolAgent } = await import("../modes/ask/tool-agent.js");
-            const ctx = { userId: chatId, channel: "web" as const, workspacePath: "/", requestConsent: async () => true };
-
-            await runToolAgent(body.text, config, ctx, (chunk: any) => {
-              if (chunk.type === "progress") {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ p: chunk.text })}\n\n`));
-              } else if (chunk.type === "text") {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ t: chunk.text })}\n\n`));
-              }
-            });
-
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
-          }
-
-          broadcastLog({ type: "output", text: `[streamed response]` });
-        });
-      });
+      return handleApiMessageStream(req);
     }
 
     // Canvas Control Endpoint
     if (url.pathname === "/api/canvas" && req.method === "POST") {
-      return req.json().then((body: any) => {
-        broadcastLog({ type: "canvas_update", action: body.action, data: body.data });
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      });
+      return handleApiCanvas(req);
     }
 
     return new Response("Not Found", { status: 404 });

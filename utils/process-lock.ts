@@ -58,7 +58,7 @@ export async function acquireLock(): Promise<void> {
 }
 
 /** Release the lock file (called on exit) */
-export function releaseLock(): void {
+function releaseLock(): void {
   try {
     if (fs.existsSync(LOCK_FILE)) {
       const raw = fs.readFileSync(LOCK_FILE, "utf8").trim();

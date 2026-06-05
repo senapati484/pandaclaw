@@ -1,0 +1,11 @@
+name: Fallow analysis
+on: [push, pull_request]
+
+jobs:
+  fallow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fallow-rs/fallow@v2
+        with:
+          format: sarif

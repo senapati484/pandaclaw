@@ -18,6 +18,7 @@ import {
   pruneAndCompactChats
 } from "../../memory/store.js";
 import { sanitizeMessages, fetchWithRetry } from "../../ai/providers/llm-utils.js";
+import { TOOL_SCHEMAS } from "./tool-schemas.js";
 
 export interface ToolAgentResult {
   answer: string;
@@ -39,105 +40,6 @@ function pushChatHistory(chatId: string, role: "user" | "assistant", content: st
   saveChatMessage(chatId, role, content);
 }
 
-// ── OpenAI-compatible tool schema for the LLM ─────────────────────────────
-const TOOL_SCHEMAS = [
-  {
-    type: "function",
-    function: {
-      name: "file_read",
-      description: "Read any file on the device. Use absolute paths.",
-      parameters: { type: "object", properties: { path: { type: "string", description: "Absolute path" } }, required: ["path"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "file_write",
-      description: "Write or create any file. Creates parent dirs automatically.",
-      parameters: { type: "object", properties: { path: { type: "string", description: "Absolute path" }, content: { type: "string", description: "Full file content" } }, required: ["path", "content"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_dir",
-      description: "List files and folders in a directory.",
-      parameters: { type: "object", properties: { path: { type: "string", description: "Directory path" }, recursive: { type: "boolean", description: "List recursively" } } },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "code_exec",
-      description: "Execute any shell command on the device.",
-      parameters: { type: "object", properties: { code: { type: "string", description: "Shell command" }, timeout: { type: "number", description: "Timeout ms" } }, required: ["code"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "web_search",
-      description: "Search the web for current information on any topic.",
-      parameters: { type: "object", properties: { query: { type: "string", description: "Search query" } }, required: ["query"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "alarm_set",
-      description: "Set an alarm or reminder on macOS.",
-      parameters: { type: "object", properties: { message: { type: "string", description: "Alarm message" }, time: { type: "string", description: "HH:MM or 10m/30s/1h" } }, required: ["message", "time"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "memory_recall",
-      description: "Recall past conversations and facts from memory.",
-      parameters: { type: "object", properties: { query: { type: "string", description: "What to recall" } }, required: ["query"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "app_control",
-      description: "Control macOS apps, system settings, browsers, and keyboard input.",
-      parameters: {
-        type: "object",
-        properties: {
-          app: { type: "string", enum: ["chrome", "safari", "youtube", "system", "browser_action", "keyboard"] },
-          action: { type: "string", enum: ["open_url", "search", "resolve_latest", "vscode", "service", "volume", "brightness", "clipboard", "scroll", "navigate", "list_tabs", "switch_tab", "type", "press_key"] },
-          url: { type: "string", description: "URL to open" }, query: { type: "string", description: "Search query" }, channel: { type: "string", description: "YT channel" },
-          folder: { type: "string", description: "Folder path" }, service: { type: "string", description: "Service name" }, state: { type: "string", enum: ["start", "stop"] },
-          value: { type: "number", description: "0-100" }, subAction: { type: "string", enum: ["read", "write"] },
-          text: { type: "string", description: "Text to type" }, browser: { type: "string", enum: ["chrome", "safari"] },
-          direction: { type: "string", enum: ["up", "down", "top", "bottom"] },
-          navigateAction: { type: "string", enum: ["back", "forward", "refresh", "close_tab"] },
-          target: { type: "string", description: "Tab index/title" }, key: { type: "string", description: "Key name" },
-          modifiers: { type: "array", items: { type: "string", enum: ["command", "option", "control", "shift", "cmd", "alt", "ctrl"] } }
-        },
-        required: ["app", "action"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "canvas_control",
-      description: "Draw shapes or display HTML on the canvas dashboard.",
-      parameters: {
-        type: "object",
-        properties: {
-          action: { type: "string", enum: ["draw_rect", "render_html", "clear_canvas"] },
-          x: { type: "number", description: "X coord" }, y: { type: "number", description: "Y coord" }, width: { type: "number" }, height: { type: "number" },
-          color: { type: "string", description: "CSS color" }, lineWidth: { type: "number" }, label: { type: "string" },
-          html: { type: "string", description: "HTML content" }, clearFirst: { type: "boolean" }
-        },
-        required: ["action"]
-      }
-    }
-  }
-];
 
 /** Build the system prompt dynamically from the current device's OS info — no hardcoding. */
 function buildSystemPrompt(memoryContext: string): string {
@@ -283,55 +185,87 @@ async function callWithTools(
 
 // ── Built-in tool handlers ────────────────────────────────────────────────
 
+function parseRelativeAlarm(timeStr: string): number | null {
+  const delayMatch = timeStr.match(/^(\d+)(s|m|h)$/i);
+  if (!delayMatch) return null;
+  const val = parseInt(delayMatch[1]!);
+  const unit = delayMatch[2]!.toLowerCase();
+  return unit === "s" ? val * 1000 : unit === "m" ? val * 60_000 : val * 3_600_000;
+}
+
+function parseAbsoluteAlarm(timeStr: string): number | null {
+  const now = new Date();
+  let targetHour = -1;
+  let targetMin = 0;
+
+  const ampmSimple = timeStr.match(/^(\d{1,2})(am|pm)$/i);
+  const fullTime = timeStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
+
+  if (ampmSimple) {
+    let h = parseInt(ampmSimple[1]!);
+    const period = ampmSimple[2]!.toLowerCase();
+    if (period === "pm" && h !== 12) h += 12;
+    if (period === "am" && h === 12) h = 0;
+    targetHour = h;
+    targetMin = 0;
+  } else if (fullTime) {
+    let h = parseInt(fullTime[1]!);
+    const m = parseInt(fullTime[2]!);
+    const period = fullTime[3]?.toLowerCase();
+    if (period === "pm" && h !== 12) h += 12;
+    if (period === "am" && h === 12) h = 0;
+    targetHour = h;
+    targetMin = m;
+  }
+
+  if (targetHour >= 0) {
+    const target = new Date(now);
+    target.setHours(targetHour, targetMin, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    return target.getTime() - now.getTime();
+  }
+  return null;
+}
+
+function parseAlarmTime(timeStr: string): number {
+  const relative = parseRelativeAlarm(timeStr);
+  if (relative !== null) return relative;
+
+  const absolute = parseAbsoluteAlarm(timeStr);
+  if (absolute !== null) return absolute;
+
+  return -1;
+}
+
+async function triggerAlarmNotification(message: string, platform: string): Promise<void> {
+  try {
+    const { spawnSync } = await import("child_process");
+    if (platform === "darwin") {
+      // macOS: use osascript to show a system notification
+      spawnSync("osascript", [
+        "-e",
+        `display notification "${message}" with title "🐼 PandaClaw Alarm" sound name "Glass"`,
+      ]);
+      // Also say it aloud
+      spawnSync("say", [`PandaClaw alarm: ${message}`]);
+    } else {
+      // Linux: use notify-send or terminal bell
+      try { spawnSync("notify-send", ["🐼 PandaClaw Alarm", message]); } catch {}
+      process.stdout.write("\x07"); // terminal bell
+    }
+    console.log(`\n🔔 [ALARM FIRED] ${message}\n`);
+  } catch {}
+}
+
 async function handleAlarmSet(args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
   const message = String(args.message ?? "PandaClaw Reminder");
   const timeStr = String(args.time ?? "");
 
   const platform = os.platform();
-  let delayMs = 0;
+  const delayMs = parseAlarmTime(timeStr);
 
-  // Parse delay format: "10m", "30s", "1h"
-  const delayMatch = timeStr.match(/^(\d+)(s|m|h)$/i);
-  if (delayMatch) {
-    const val = parseInt(delayMatch[1]!);
-    const unit = delayMatch[2]!.toLowerCase();
-    delayMs = unit === "s" ? val * 1000 : unit === "m" ? val * 60_000 : val * 3_600_000;
-  } else {
-    // Parse clock time: "17:00", "5:00 PM", "5pm", "17:30"
-    const now = new Date();
-    let targetHour = -1;
-    let targetMin = 0;
-
-    // "5pm", "5am"
-    const ampmSimple = timeStr.match(/^(\d{1,2})(am|pm)$/i);
-    // "5:30pm", "17:30"
-    const fullTime = timeStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
-
-    if (ampmSimple) {
-      let h = parseInt(ampmSimple[1]!);
-      const period = ampmSimple[2]!.toLowerCase();
-      if (period === "pm" && h !== 12) h += 12;
-      if (period === "am" && h === 12) h = 0;
-      targetHour = h;
-      targetMin = 0;
-    } else if (fullTime) {
-      let h = parseInt(fullTime[1]!);
-      const m = parseInt(fullTime[2]!);
-      const period = fullTime[3]?.toLowerCase();
-      if (period === "pm" && h !== 12) h += 12;
-      if (period === "am" && h === 12) h = 0;
-      targetHour = h;
-      targetMin = m;
-    }
-
-    if (targetHour >= 0) {
-      const target = new Date(now);
-      target.setHours(targetHour, targetMin, 0, 0);
-      if (target <= now) target.setDate(target.getDate() + 1); // next day if past
-      delayMs = target.getTime() - now.getTime();
-    } else {
-      return { success: false, output: `Could not parse time: "${timeStr}". Try "5pm", "17:00", "10m", or "30s".` };
-    }
+  if (delayMs < 0) {
+    return { success: false, output: `Could not parse time: "${timeStr}". Try "5pm", "17:00", "10m", or "30s".` };
   }
 
   const delayMin = Math.round(delayMs / 60_000);
@@ -341,24 +275,7 @@ async function handleAlarmSet(args: Record<string, unknown>): Promise<{ success:
 
   // Schedule the alarm using setTimeout + native notification
   setTimeout(async () => {
-    try {
-      if (platform === "darwin") {
-        // macOS: use osascript to show a system notification
-        const { spawnSync } = await import("child_process");
-        spawnSync("osascript", [
-          "-e",
-          `display notification "${message}" with title "🐼 PandaClaw Alarm" sound name "Glass"`,
-        ]);
-        // Also say it aloud
-        spawnSync("say", [`PandaClaw alarm: ${message}`]);
-      } else {
-        // Linux: use notify-send or terminal bell
-        const { spawnSync } = await import("child_process");
-        try { spawnSync("notify-send", ["🐼 PandaClaw Alarm", message]); } catch {}
-        process.stdout.write("\x07"); // terminal bell
-      }
-      console.log(`\n🔔 [ALARM FIRED] ${message}\n`);
-    } catch {}
+    await triggerAlarmNotification(message, platform);
   }, delayMs);
 
   return {
@@ -408,6 +325,59 @@ function simulateStream(text: string, onChunk?: OnChunk): void {
     }
   }
   if (buffer) onChunk({ type: "text", text: buffer });
+}
+
+async function executeAgentToolCall(
+  tc: any,
+  ctx: ToolContext,
+  onChunk?: OnChunk
+): Promise<{ role: "tool"; tool_call_id: string; content: string; toolName: string }> {
+  const toolName: string = tc.function?.name ?? "";
+  let toolArgs: Record<string, unknown> = {};
+
+  try {
+    toolArgs = JSON.parse(tc.function?.arguments ?? "{}");
+  } catch {
+    toolArgs = {};
+  }
+
+  const progressLabel: Record<string, string> = {
+    web_search: "🔍 Searching the web",
+    file_read: "📖 Reading file",
+    file_write: "✏️ Writing file",
+    list_dir: "📂 Listing directory",
+    code_exec: "⚡ Running command",
+    app_control: "🎮 Controlling app",
+    canvas_control: "🎨 Updating canvas",
+    memory_recall: "🧠 Recalling memory",
+    alarm_set: "⏰ Setting alarm",
+  };
+  const progressMsg = progressLabel[toolName] || `🔧 Running ${toolName}`;
+  onChunk?.({ type: "progress", text: progressMsg });
+
+  let toolResult: { success?: boolean; output?: string; data?: unknown; error?: string };
+
+  if (toolName === "alarm_set") {
+    toolResult = await handleAlarmSet(toolArgs);
+  } else if (toolName === "memory_recall") {
+    toolResult = await handleMemoryRecall(toolArgs);
+  } else {
+    const result = await runTool(toolName, toolArgs, ctx);
+    toolResult = result.success
+      ? { output: compressJson(result.data) }
+      : { error: result.error };
+  }
+
+  const content = toolResult.error
+    ? `ERROR: ${toolResult.error}`
+    : compressJson(toolResult.output ?? toolResult);
+
+  return {
+    role: "tool",
+    tool_call_id: tc.id,
+    content,
+    toolName
+  };
 }
 
 // ── Main agentic loop ─────────────────────────────────────────────────────
@@ -464,52 +434,12 @@ export async function runToolAgent(
     // Handle tool calls
     if (hadTools && msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
-        const toolName: string = tc.function?.name ?? "";
-        let toolArgs: Record<string, unknown> = {};
-
-        try {
-          toolArgs = JSON.parse(tc.function?.arguments ?? "{}");
-        } catch {
-          toolArgs = {};
-        }
-
-        toolsUsed.push(toolName);
-
-        const progressLabel: Record<string, string> = {
-          web_search: "🔍 Searching the web",
-          file_read: "📖 Reading file",
-          file_write: "✏️ Writing file",
-          list_dir: "📂 Listing directory",
-          code_exec: "⚡ Running command",
-          app_control: "🎮 Controlling app",
-          canvas_control: "🎨 Updating canvas",
-          memory_recall: "🧠 Recalling memory",
-          alarm_set: "⏰ Setting alarm",
-        };
-        const progressMsg = progressLabel[toolName] || `🔧 Running ${toolName}`;
-        onChunk?.({ type: "progress", text: progressMsg });
-
-        let toolResult: { success?: boolean; output?: string; data?: unknown; error?: string };
-
-        // Handle built-in tools
-        if (toolName === "alarm_set") {
-          toolResult = await handleAlarmSet(toolArgs);
-        } else if (toolName === "memory_recall") {
-          toolResult = await handleMemoryRecall(toolArgs);
-        } else {
-          // Run standard tools (file_read, file_write, list_dir, code_exec, web_search)
-          const result = await runTool(toolName, toolArgs, ctx);
-          toolResult = result.success
-            ? { output: compressJson(result.data) }
-            : { error: result.error };
-        }
-
+        const executed = await executeAgentToolCall(tc, ctx, onChunk);
+        toolsUsed.push(executed.toolName);
         messages.push({
           role: "tool",
-          tool_call_id: tc.id,
-          content: toolResult.error
-            ? `ERROR: ${toolResult.error}`
-            : compressJson(toolResult.output ?? toolResult),
+          tool_call_id: executed.tool_call_id,
+          content: executed.content,
         });
       }
 

@@ -73,14 +73,4 @@ export async function runTool(
   }
 }
 
-/**
- * List all available tools (name + description + risk level)
- */
-export function listTools(): Array<{ name: string; description: string; risky: boolean; readOnly: boolean }> {
-  return Object.values(TOOLS).map((t) => ({
-    name: t.name,
-    description: t.description,
-    risky: t.risky,
-    readOnly: t.readOnly,
-  }));
-}
+

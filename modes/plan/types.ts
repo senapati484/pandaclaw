@@ -53,21 +53,20 @@ export interface Plan {
 }
 
 import type { LearnedConstraint } from "../../types/shared.js";
-export type { LearnedConstraint };
 
-export interface PlanningPattern {
+interface PlanningPattern {
   name: string;
   steps: string[];
   category: string;
   success: boolean;
 }
 
-export interface PlanningMistake {
+interface PlanningMistake {
   description: string;
   lesson: string;
 }
 
-export interface SessionMemory {
+interface SessionMemory {
   sessionId: string;
   createdAt: Date;
   learnedConstraints: LearnedConstraint[];

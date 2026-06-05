@@ -2,6 +2,13 @@ import type { SwarmTask, SwarmContext } from "./types.js";
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import { SwarmWorker } from "./worker.js";
 import { callLLM } from "../../../ai/llm.js";
+import { ActionTracker } from "../action-tracker.js";
+import { ActionHistory } from "../action-history.js";
+import { SessionMemoryManager } from "../session-memory.js";
+import { getSessionManager } from "../session-manager.js";
+import { Logger } from "../../../utils/logger.js";
+import chalk from "chalk";
+import { confirm } from "@clack/prompts";
 
 // Role-specific token budgets — researcher/verifier are cheap fact-finders,
 // only coder truly needs a large context window for code generation.
@@ -24,10 +31,108 @@ const WORKER_MODEL_ROUTE: Record<string, { provider: string; model: string }> = 
 export class SwarmCoordinator {
   private config: PandaConfig;
   private workspacePath: string;
+  private sessionId: string | null = null;
+  private tracker: ActionTracker;
+  private actionHistory: ActionHistory;
+  private memory: SessionMemoryManager;
 
-  constructor(config: PandaConfig, workspacePath: string) {
+  constructor(config: PandaConfig, workspacePath: string, sessionId?: string) {
     this.config = config;
     this.workspacePath = workspacePath;
+    this.sessionId = sessionId || null;
+
+    this.tracker = new ActionTracker();
+    const logger = new Logger("action-history", ".pandaclaw");
+    this.actionHistory = new ActionHistory(workspacePath, logger);
+    this.memory = new SessionMemoryManager(sessionId);
+
+    if (this.sessionId) {
+      const sm = getSessionManager();
+      const stored = sm.loadSession(this.sessionId);
+      if (stored) {
+        if (stored.actions && stored.actions.length > 0) {
+          this.tracker.import(stored.actions);
+        }
+        if (stored.memory) {
+          this.memory.import(stored.memory);
+        }
+      }
+    }
+  }
+
+  public persistSwarmState(): void {
+    if (this.sessionId) {
+      const sm = getSessionManager();
+      sm.saveActions(this.sessionId, this.tracker.export());
+      sm.saveMemory(this.sessionId, this.memory.export());
+    }
+  }
+
+  public async offerSwarmUndo(): Promise<void> {
+    const historySize = this.actionHistory.undoCount();
+    if (historySize > 0) {
+      const undoChoice = await confirm({
+        message: `Undo the last mutation? (${historySize} changes in stack)`,
+        initialValue: false,
+      });
+      if (undoChoice) {
+        const undone = this.actionHistory.undo();
+        if (undone.success) {
+          console.log(chalk.green(`  ✓ ${undone.description}`));
+        } else {
+          console.log(chalk.yellow(`  ${undone.description}`));
+        }
+      }
+    }
+  }
+
+  private buildFallbackTasks(goals: string): SwarmTask[] {
+    return [
+      {
+        id: "task_research",
+        name: "Research Goal",
+        description: `Research the workspace and details needed for: "${goals}"`,
+        workerType: "researcher",
+        dependencies: [],
+        status: "pending",
+      },
+      {
+        id: "task_code",
+        name: "Code Implementation",
+        description: `Implement coding logic for: "${goals}"`,
+        workerType: "coder",
+        dependencies: ["task_research"],
+        status: "pending",
+      },
+      {
+        id: "task_verify",
+        name: "Code Verification",
+        description: `Verify and run tests to ensure correctness of: "${goals}"`,
+        workerType: "verifier",
+        dependencies: ["task_code"],
+        status: "pending",
+      },
+    ];
+  }
+
+  private async runReadyTasks(
+    readyTasks: SwarmTask[],
+    context: SwarmContext,
+    onProgress?: (message: string) => void
+  ): Promise<void> {
+    const runPromises = readyTasks.map(async (t) => {
+      if (onProgress) {
+        onProgress(`Running ${t.workerType} task: ${t.name}...`);
+      }
+      const maxTokens = WORKER_TOKEN_BUDGETS[t.workerType] ?? 1024;
+      const worker = new SwarmWorker(t.workerType, this.config, maxTokens);
+      const updated = await worker.run(t, context, onProgress);
+      context.tasks.set(t.id, updated);
+      if (updated.status === "completed" && updated.result) {
+        context.history.push(`Task [${updated.name}] result: ${updated.result}`);
+      }
+    });
+    await Promise.all(runPromises);
   }
 
   public async runSwarm(
@@ -39,6 +144,10 @@ export class SwarmCoordinator {
       goals,
       tasks: new Map<string, SwarmTask>(),
       history: [],
+      tracker: this.tracker,
+      actionHistory: this.actionHistory,
+      memory: this.memory,
+      sessionId: this.sessionId || undefined,
     };
 
     // 1. Generate dependency tasks via LLM or fall back to basic template
@@ -48,33 +157,9 @@ export class SwarmCoordinator {
         context.tasks.set(t.id, t);
       }
     } catch {
-      const t1: SwarmTask = {
-        id: "task_research",
-        name: "Research Goal",
-        description: `Research the workspace and details needed for: "${goals}"`,
-        workerType: "researcher",
-        dependencies: [],
-        status: "pending",
-      };
-      const t2: SwarmTask = {
-        id: "task_code",
-        name: "Code Implementation",
-        description: `Implement coding logic for: "${goals}"`,
-        workerType: "coder",
-        dependencies: ["task_research"],
-        status: "pending",
-      };
-      const t3: SwarmTask = {
-        id: "task_verify",
-        name: "Code Verification",
-        description: `Verify and run tests to ensure correctness of: "${goals}"`,
-        workerType: "verifier",
-        dependencies: ["task_code"],
-        status: "pending",
-      };
-      context.tasks.set(t1.id, t1);
-      context.tasks.set(t2.id, t2);
-      context.tasks.set(t3.id, t3);
+      for (const t of this.buildFallbackTasks(goals)) {
+        context.tasks.set(t.id, t);
+      }
     }
 
     // 2. Loop until all tasks complete or fail
@@ -101,22 +186,7 @@ export class SwarmCoordinator {
         break; // deadlock/cycle fallback
       }
 
-      const runPromises = readyTasks.map(async (t) => {
-        if (onProgress) {
-          onProgress(`Running ${t.workerType} task: ${t.name}...`);
-        }
-        // Pass role-specific token budget so each worker doesn't over-provision.
-        // Researcher/verifier use small budgets; only coder gets a large window.
-        const maxTokens = WORKER_TOKEN_BUDGETS[t.workerType] ?? 1024;
-        const worker = new SwarmWorker(t.workerType, this.config, maxTokens);
-        const updated = await worker.run(t, context, onProgress);
-        context.tasks.set(t.id, updated);
-        if (updated.status === "completed" && updated.result) {
-          context.history.push(`Task [${updated.name}] result: ${updated.result}`);
-        }
-      });
-
-      await Promise.all(runPromises);
+      await this.runReadyTasks(readyTasks, context, onProgress);
       loopCount++;
     }
 

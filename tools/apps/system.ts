@@ -5,17 +5,7 @@ import os from "os";
 import path from "path";
 import { exec } from "child_process";
 import { getPlatform, execAppleScript, execPowerShell, execShell } from "./utils.js";
-
-/**
- * Resolves a path that may contain relative paths or home (~) directories.
- */
-function resolvePath(inputPath: string): string {
-  if (inputPath.startsWith("~/")) {
-    return path.resolve(os.homedir(), inputPath.slice(2));
-  }
-  if (path.isAbsolute(inputPath)) return inputPath;
-  return path.resolve(process.cwd(), inputPath);
-}
+import { resolvePath } from "../../utils/path.js";
 
 /**
  * Launches Visual Studio Code into the target folder (Cross-Platform).
@@ -68,6 +58,65 @@ export async function launchVsCode(folderPath: string): Promise<string> {
   }
 }
 
+async function startOllamaService(platform: string): Promise<string> {
+  if (platform === "darwin") {
+    try {
+      await execAppleScript('tell application "Ollama" to activate');
+      return "✅ Ollama service started successfully (launched Ollama.app).";
+    } catch {
+      const { spawn } = await import("child_process");
+      const proc = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
+      proc.unref();
+      return "✅ Ollama CLI service started in the background.";
+    }
+  }
+
+  if (platform === "win32") {
+    try {
+      const ollamaExe = path.resolve(os.homedir(), "AppData/Local/Programs/Ollama/Ollama.exe");
+      await execPowerShell(`Start-Process "${ollamaExe}"`);
+      return "✅ Ollama application launched.";
+    } catch {
+      await execPowerShell("Start-Process -FilePath 'ollama' -ArgumentList 'serve' -WindowStyle Hidden");
+      return "✅ Ollama CLI service started.";
+    }
+  }
+
+  // Linux launch
+  try {
+    await execShell("systemctl start ollama");
+    return "✅ Ollama service started (via systemctl).";
+  } catch {
+    const { spawn } = await import("child_process");
+    const proc = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
+    proc.unref();
+    return "✅ Ollama CLI service started in the background.";
+  }
+}
+
+async function stopOllamaService(platform: string): Promise<string> {
+  if (platform === "darwin") {
+    try {
+      await execAppleScript('tell application "Ollama" to quit');
+    } catch {}
+    await execShell("pkill ollama");
+    return "✅ Ollama service stopped.";
+  }
+
+  if (platform === "win32") {
+    await execPowerShell("Stop-Process -Name 'ollama' -Force -ErrorAction SilentlyContinue");
+    await execPowerShell("taskkill /F /IM ollama.exe /T");
+    return "✅ Ollama service stopped.";
+  }
+
+  // Linux stop
+  try {
+    await execShell("systemctl stop ollama");
+  } catch {}
+  await execShell("pkill ollama");
+  return "✅ Ollama service stopped.";
+}
+
 /**
  * Controls background services like Ollama (Cross-Platform).
  */
@@ -77,63 +126,9 @@ export async function controlService(serviceName: string, state: "start" | "stop
 
   if (service === "ollama") {
     if (state === "start") {
-      if (platform === "darwin") {
-        try {
-          await execAppleScript('tell application "Ollama" to activate');
-          return "✅ Ollama service started successfully (launched Ollama.app).";
-        } catch {
-          const { spawn } = await import("child_process");
-          const proc = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
-          proc.unref();
-          return "✅ Ollama CLI service started in the background.";
-        }
-      }
-
-      if (platform === "win32") {
-        try {
-          // Attempt standard Ollama installer path first
-          const ollamaExe = path.resolve(os.homedir(), "AppData/Local/Programs/Ollama/Ollama.exe");
-          await execPowerShell(`Start-Process "${ollamaExe}"`);
-          return "✅ Ollama application launched.";
-        } catch {
-          // Fallback to standard CLI service
-          await execPowerShell("Start-Process -FilePath 'ollama' -ArgumentList 'serve' -WindowStyle Hidden");
-          return "✅ Ollama CLI service started.";
-        }
-      }
-
-      // Linux launch
-      try {
-        await execShell("systemctl start ollama");
-        return "✅ Ollama service started (via systemctl).";
-      } catch {
-        const { spawn } = await import("child_process");
-        const proc = spawn("ollama", ["serve"], { detached: true, stdio: "ignore" });
-        proc.unref();
-        return "✅ Ollama CLI service started in the background.";
-      }
+      return await startOllamaService(platform);
     } else {
-      // STOP SERVICE
-      if (platform === "darwin") {
-        try {
-          await execAppleScript('tell application "Ollama" to quit');
-        } catch {}
-        await execShell("pkill ollama");
-        return "✅ Ollama service stopped.";
-      }
-
-      if (platform === "win32") {
-        await execPowerShell("Stop-Process -Name 'ollama' -Force -ErrorAction SilentlyContinue");
-        await execPowerShell("taskkill /F /IM ollama.exe /T");
-        return "✅ Ollama service stopped.";
-      }
-
-      // Linux stop
-      try {
-        await execShell("systemctl stop ollama");
-      } catch {}
-      await execShell("pkill ollama");
-      return "✅ Ollama service stopped.";
+      return await stopOllamaService(platform);
     }
   }
 

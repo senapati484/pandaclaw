@@ -79,12 +79,4 @@ export function classifyRoute(input: string): RouteType {
   return "simple";
 }
 
-// ── Legacy: keep classifyTask for backward compatibility ───────────────────
-export type AskTaskTypeCompat = AskTaskType;
 
-export function classifyTask(input: string): AskTaskType {
-  const route = classifyRoute(input);
-  // Map: action → complex (so it goes to tool agent in legacy gateways)
-  // but gateway/index.ts now uses classifyRoute directly
-  return route === "simple" ? "simple" : "complex";
-}

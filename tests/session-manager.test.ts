@@ -49,9 +49,10 @@ test("loadSession returns stored session data", () => {
   expect(loaded!.messages).toEqual([]);
 });
 
-test("listSessions returns all sessions sorted by updatedAt", () => {
+test("listSessions returns all sessions sorted by updatedAt", async () => {
   const sm = new SessionManager(TEST_SESSIONS_DIR);
   sm.createSession("first", "First goal", "/ws1", defaultAgentConfig());
+  await new Promise((resolve) => setTimeout(resolve, 5));
   sm.createSession("second", "Second goal", "/ws2", defaultAgentConfig());
 
   const list = sm.listSessions();

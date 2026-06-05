@@ -61,7 +61,7 @@ interface NIMResponse {
 }
 
 // ── Core chat call ──────────────────────────────────────────────────────────
-export async function nimChat(
+async function nimChat(
   messages: NIMMessage[],
   model: string,
   apiKey: string,
@@ -129,15 +129,4 @@ export function routeVisionModel(
   };
 }
 
-// ── Route: task type → best NIM text model ─────────────────────────────────
-export function routeNimTextModel(
-  taskType: "chat" | "code" | "edge" | "embed" | "rerank" = "chat"
-): string {
-  switch (taskType) {
-    case "code":   return NIM_MODELS.code_embed;
-    case "edge":   return NIM_MODELS.edge_fast;
-    case "embed":  return NIM_MODELS.embed;
-    case "rerank": return NIM_MODELS.rerank;
-    default:       return NIM_MODELS.chat_large;   // mistral-large-3 for general tasks
-  }
-}
+

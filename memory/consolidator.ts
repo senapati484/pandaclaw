@@ -1,6 +1,6 @@
 import { writeFileSync, existsSync, readFileSync } from "fs";
 import path from "path";
-import { loadMemory, saveGraphRelation } from "./store.js";
+import { loadMemory, parseAndSaveGraphRelations } from "./store.js";
 import type { PandaConfig } from "../ai/ai.config.js";
 import { callLLM } from "../ai/llm.js";
 
@@ -47,21 +47,7 @@ Subject | Predicate | Object`;
       });
 
       const graph = data.choices?.[0]?.message?.content ?? "";
-
-      const lines = graph.split("\n").filter((l: string) => l.trim());
-      let extractedCount = 0;
-      for (const line of lines) {
-        // Strip out leading bullets or numbers if generated
-        const cleanLine = line.replace(/^[\s•\-\d\.\*]+/, "").trim();
-        const parts = cleanLine.split("|").map((p: string) => p.trim());
-        if (parts.length === 3) {
-          const [subject, predicate, object] = parts;
-          if (subject && predicate && object) {
-            saveGraphRelation({ subject, predicate, object });
-            extractedCount++;
-          }
-        }
-      }
+      const extractedCount = parseAndSaveGraphRelations(graph);
 
       return `Consolidated ${extractedCount} semantic relations into PandaGraph.`;
     } catch (err: any) {

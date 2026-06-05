@@ -1,0 +1,802 @@
+● Health score: 78 B
+  Deductions: hotspots -10.0 · unit size -10.0 · coupling -1.5
+
+■ Metrics: 11,318 LOC · dead files 0.0% · dead exports 0.0% · avg cyclomatic 3.8 · p90 cyclomatic 9 · maintainability 90.3 (good) · 0 churn hotspots (since 6 months) · duplication 0.0%
+
+  Function size: 68% low · 15% medium · 13% high · 4% very high  (1-15 / 16-30 / 31-60 / >60 LOC)
+  Parameters:    90% low · 9% medium · 1% high · 0% very high  (0-2 / 3-4 / 5-6 / >=7 params)
+
+● Large functions (10 shown, 25 total)
+  modes/agent/swarm/worker.ts
+    :20 run  225 lines
+  modes/gateway/adapters/telegram.ts
+    :77 initialize  207 lines
+  modes/ask/fast-path.ts
+    :94 runFastPath  190 lines
+  modes/ask/panda-mode.ts
+    :13 runPandaMode  157 lines
+  modes/ask/orchestrator.ts
+    :16 runAskMode  149 lines
+    :25 promptUser  134 lines
+    :26 <arrow>  132 lines
+  modes/agent/orchestrator.ts
+    :495 runAgentMode  116 lines
+  modes/ask/tool-agent.ts
+    :480 runToolAgent  111 lines
+  canvas/server.ts
+    :56 fetch  109 lines
+  Functions exceeding 60 lines of code (very high risk): https://docs.fallow.tools/explanations/health#unit-size
+  use --top 25 to see all
+
+● High complexity functions (155)
+  CRAP scores are estimated from export references; run `fallow health --coverage <coverage-final.json>` for exact scores.
+  ai/providers/stream-adapter.ts
+    :12 streamCompletion CRITICAL
+          25 cyclomatic   35 cognitive   97 lines
+         650.0 CRAP
+  modes/agent/test-runner.ts
+    :15 detectTestRunner CRITICAL
+          24 cyclomatic   33 cognitive   25 lines
+         600.0 CRAP
+  modes/agent/orchestrator.ts
+    :495 runAgentMode CRITICAL
+          23 cyclomatic   40 cognitive  116 lines
+         552.0 CRAP
+  tools/file-tools.ts
+    :18 syntaxCheck CRITICAL
+          23 cyclomatic   26 cognitive   62 lines
+         552.0 CRAP
+  modes/agent/orchestrator.ts
+    :104 runReactorLoop CRITICAL
+          22 cyclomatic   35 cognitive   94 lines
+         506.0 CRAP
+  modes/agent/swarm/worker.ts
+    :20 run CRITICAL
+          20 cyclomatic   30 cognitive  225 lines
+         420.0 CRAP
+  tui/setup.ts
+    :9 initializeSetupConfig CRITICAL
+          19 cyclomatic   21 cognitive   39 lines
+         380.0 CRAP
+    :91 promptRoutingConfig CRITICAL
+          19 cyclomatic   19 cognitive   56 lines
+         380.0 CRAP
+  ai/ai.config.ts
+    :47 applyGithubOverrides CRITICAL
+          19 cyclomatic    8 cognitive   15 lines
+         380.0 CRAP
+  modes/agent/test-runner.ts
+    :41 runTests CRITICAL
+          18 cyclomatic   19 cognitive   70 lines
+         342.0 CRAP
+  modes/ask/panda-mode.ts
+    :13 runPandaMode CRITICAL
+          18 cyclomatic   20 cognitive  157 lines
+         342.0 CRAP
+  modes/ask/tool-agent.ts
+    :480 runToolAgent CRITICAL
+          18 cyclomatic   20 cognitive  111 lines
+         342.0 CRAP
+  modes/agent/action-planner.ts
+    :126 breakDownGoalOffline CRITICAL
+          18 cyclomatic   14 cognitive   62 lines
+         342.0 CRAP
+  modes/agent/types.ts
+    :251 defaultAgentConfig CRITICAL
+          17 cyclomatic   13 cognitive   30 lines
+         306.0 CRAP
+  index.ts
+    :92 <arrow> CRITICAL
+          16 cyclomatic   26 cognitive   51 lines
+         272.0 CRAP
+  modes/ask/tool-agent.ts
+    :286 parseAlarmTime CRITICAL
+          16 cyclomatic   32 cognitive   49 lines
+         272.0 CRAP
+  modes/gateway/adapters/telegram.ts
+    :228 <arrow> CRITICAL
+          16 cyclomatic   16 cognitive   55 lines
+         272.0 CRAP
+  tools/code-exec.ts
+    :139 execute CRITICAL
+          16 cyclomatic   18 cognitive   58 lines
+         272.0 CRAP
+  tools/apps/browser-actions.ts
+    :10 scrollBrowser CRITICAL
+          16 cyclomatic   11 cognitive   49 lines
+         272.0 CRAP
+    :63 navigateBrowser CRITICAL
+          16 cyclomatic   11 cognitive   46 lines
+         272.0 CRAP
+  modes/gateway/index.ts
+    :134 executeAgentRoute CRITICAL
+          15 cyclomatic   17 cognitive   93 lines
+         240.0 CRAP
+  ai/providers/groq-adapter.ts
+    :20 complete CRITICAL
+          14 cyclomatic   25 cognitive   45 lines
+         210.0 CRAP
+  modes/agent/action-planner.ts
+    :210 planFileCreation CRITICAL
+          14 cyclomatic   23 cognitive   56 lines
+         210.0 CRAP
+  modes/ask/orchestrator.ts
+    :26 <arrow> CRITICAL
+          14 cyclomatic   18 cognitive  132 lines
+         210.0 CRAP
+  ai/llm.ts
+    :106 callLLMStream CRITICAL
+          13 cyclomatic   17 cognitive   84 lines
+         182.0 CRAP
+  modes/agent/action-planner.ts
+    :335 analyzeDependencies CRITICAL
+          13 cyclomatic   21 cognitive   32 lines
+         182.0 CRAP
+  modes/ask/fast-path.ts
+    :94 runFastPath CRITICAL
+          13 cyclomatic   18 cognitive  190 lines
+         182.0 CRAP
+  modes/ask/tool-agent.ts
+    :204 callWithTools CRITICAL
+          13 cyclomatic   21 cognitive   79 lines
+         182.0 CRAP
+  canvas/server.ts
+    :56 fetch CRITICAL
+          13 cyclomatic   13 cognitive  109 lines
+         182.0 CRAP
+  modes/ask/tool-agent.ts
+    :426 executeAgentToolCall CRITICAL
+          13 cyclomatic   11 cognitive   52 lines
+         182.0 CRAP
+  tools/canvas-tools.ts
+    :8 execute CRITICAL
+          13 cyclomatic   12 cognitive   43 lines
+         182.0 CRAP
+  tui/setup.ts
+    :49 promptApiKeys CRITICAL
+          13 cyclomatic   12 cognitive   41 lines
+         182.0 CRAP
+  modes/agent/action-planner.ts
+    :10 createMutationPlan CRITICAL
+          12 cyclomatic   17 cognitive   51 lines
+         156.0 CRAP
+  modes/agent/test-runner.ts
+    :120 parseTestOutput CRITICAL
+          12 cyclomatic   17 cognitive   38 lines
+         156.0 CRAP
+  tools/apps/system.ts
+    :64 controlService CRITICAL
+          12 cyclomatic   34 cognitive   68 lines
+         156.0 CRAP
+  modes/agent/orchestrator.ts
+    :199 executeMutationStep CRITICAL
+          12 cyclomatic   15 cognitive   65 lines
+         156.0 CRAP
+    :409 wrapLine CRITICAL
+          12 cyclomatic   14 cognitive   39 lines
+         156.0 CRAP
+  utils/logger.ts
+    :46 log CRITICAL
+          12 cyclomatic   10 cognitive   37 lines
+         156.0 CRAP
+  ai/llm.ts
+    :63 resolveProviderConfig CRITICAL
+          12 cyclomatic    8 cognitive   22 lines
+         156.0 CRAP
+  tools/apps/system.ts
+    :211 handleClipboard CRITICAL
+          11 cyclomatic   19 cognitive   50 lines
+         132.0 CRAP
+  ai/providers/llm-utils.ts
+    :71 parseFunctionTag CRITICAL
+          11 cyclomatic   10 cognitive   39 lines
+         132.0 CRAP
+  ai/context-compressor.ts
+    :154 compressJson CRITICAL
+          11 cyclomatic   15 cognitive   51 lines
+         132.0 CRAP
+  tools/apps/index.ts
+    :160 execute CRITICAL
+          11 cyclomatic    5 cognitive   28 lines
+         132.0 CRAP
+  modes/ask/tool-agent.ts
+    :165 TOOL_PROVIDERS CRITICAL
+          11 cyclomatic    2 cognitive   34 lines
+         132.0 CRAP
+  modes/agent/session-manager.ts
+    :323 readMemory CRITICAL
+          11 cyclomatic   10 cognitive   23 lines
+         132.0 CRAP
+  ai/llm.ts
+    :244 callLLM CRITICAL
+          11 cyclomatic   12 cognitive   40 lines
+         132.0 CRAP
+  tools/apps/system.ts
+    :136 adjustSystemSetting CRITICAL
+          10 cyclomatic   17 cognitive   71 lines
+         110.0 CRAP
+  ai/providers/llm-utils.ts
+    :42 <arrow> CRITICAL
+          10 cyclomatic   12 cognitive   27 lines
+         110.0 CRAP
+    :125 makeCompletionRequest CRITICAL
+          10 cyclomatic    7 cognitive   44 lines
+         110.0 CRAP
+  modes/agent/types.ts
+    :215 estimateMutationRisk CRITICAL
+          10 cyclomatic    9 cognitive   33 lines
+         110.0 CRAP
+  ai/ai.config.ts
+    :23 applyProviderOverrides CRITICAL
+          10 cyclomatic    9 cognitive   13 lines
+         110.0 CRAP
+  ai/llm.ts
+    :24 initProviders CRITICAL
+          10 cyclomatic    5 cognitive   35 lines
+         110.0 CRAP
+  modes/agent/context-manager.ts
+    :137 detectFrameworks HIGH
+           9 cyclomatic   15 cognitive   26 lines
+          90.0 CRAP
+  modes/agent/orchestrator.ts
+    :41 initializeSession HIGH
+           9 cyclomatic   13 cognitive   59 lines
+          90.0 CRAP
+  ai/context-compressor.ts
+    :172 prune HIGH
+           9 cyclomatic   11 cognitive   25 lines
+          90.0 CRAP
+  modes/ask/orchestrator.ts
+    :192 askQuestion HIGH
+           9 cyclomatic    8 cognitive   26 lines
+          90.0 CRAP
+  modes/agent/action-history.ts
+    :44 undo HIGH
+           9 cyclomatic   10 cognitive   32 lines
+          90.0 CRAP
+  tools/apps/keyboard.ts
+    :161 getWin32ModifierPrefix HIGH
+           9 cyclomatic   15 cognitive   12 lines
+          90.0 CRAP
+  modes/gateway/adapters/telegram.ts
+    :99 <arrow> HIGH
+           9 cyclomatic    6 cognitive   19 lines
+          90.0 CRAP
+  modes/agent/mutation-executor.ts
+    :47 execute HIGH
+           9 cyclomatic    4 cognitive   53 lines
+          90.0 CRAP
+  modes/plan/plan-executor.ts
+    :12 executeStep HIGH
+           9 cyclomatic    8 cognitive   56 lines
+          90.0 CRAP
+  memory/store.ts
+    :153 recallRelevantRelations HIGH
+           9 cyclomatic    9 cognitive   44 lines
+          90.0 CRAP
+    :289 pruneAndCompactChats HIGH
+           9 cyclomatic    8 cognitive   71 lines
+          90.0 CRAP
+  modes/gateway/adapters/slack.ts
+    :43 handleWebhookEvent HIGH
+           9 cyclomatic    8 cognitive   14 lines
+          90.0 CRAP
+  modes/plan/plan-generator.ts
+    :145 generatePlan HIGH
+           9 cyclomatic    7 cognitive   54 lines
+          90.0 CRAP
+  utils/process-lock.ts
+    :17 acquireLock HIGH
+           8 cyclomatic   16 cognitive   42 lines
+          72.0 CRAP
+  modes/agent/context-manager.ts
+    :85 scanDirectory HIGH
+           8 cyclomatic   10 cognitive   31 lines
+          72.0 CRAP
+  modes/agent/orchestrator.ts
+    :282 phaseReason HIGH
+           8 cyclomatic    6 cognitive   27 lines
+          72.0 CRAP
+    :330 phaseReflect HIGH
+           8 cyclomatic    8 cognitive   30 lines
+          72.0 CRAP
+  tools/web-search.ts
+    :55 <arrow> HIGH
+           8 cyclomatic   10 cognitive   22 lines
+          72.0 CRAP
+  ai/providers/llm-utils.ts
+    :13 fetchWithRetry HIGH
+           8 cyclomatic   15 cognitive   27 lines
+          72.0 CRAP
+  ai/providers/adapter.ts
+    :73 getFallbackChain HIGH
+           8 cyclomatic   10 cognitive   23 lines
+          72.0 CRAP
+  ai/context-compressor.ts
+    :20 compressCodebaseIndex HIGH
+           8 cyclomatic    8 cognitive   34 lines
+          72.0 CRAP
+  tools/apps/index.ts
+    :141 handleKeyboard HIGH
+           8 cyclomatic   10 cognitive   13 lines
+          72.0 CRAP
+  modes/gateway/index.ts
+    :59 handleVisionMessage HIGH
+           8 cyclomatic    3 cognitive   20 lines
+          72.0 CRAP
+  modes/agent/swarm/coordinator.ts
+    :33 runSwarm HIGH
+           8 cyclomatic    9 cognitive  101 lines
+          72.0 CRAP
+  modes/agent/reflection-engine.ts
+    :16 validateMutation HIGH
+           8 cyclomatic    9 cognitive   35 lines
+          72.0 CRAP
+  tools/dynamic-loader.ts
+    :18 getFiles HIGH
+           8 cyclomatic   10 cognitive   15 lines
+          72.0 CRAP
+    :9 loadDynamicSkills HIGH
+           8 cyclomatic    8 cognitive   44 lines
+          72.0 CRAP
+  tui/setup.ts
+    :148 promptGateways HIGH
+           8 cyclomatic    7 cognitive   24 lines
+          72.0 CRAP
+  modes/agent/session-manager.ts
+    :267 updateManifest HIGH
+           8 cyclomatic   10 cognitive   32 lines
+          72.0 CRAP
+  ai/llm.ts
+    :132 <arrow> HIGH
+           8 cyclomatic    6 cognitive   16 lines
+          72.0 CRAP
+    :191 callLLMNonStream HIGH
+           8 cyclomatic   13 cognitive   52 lines
+          72.0 CRAP
+  modes/plan/plan-generator.ts
+    :74 generatePlan HIGH
+           8 cyclomatic    6 cognitive   60 lines
+          72.0 CRAP
+  modes/agent/orchestrator.ts
+    :449 drawBox HIGH
+           7 cyclomatic   10 cognitive   39 lines
+          56.0 CRAP
+  tui/wakeup.ts
+    :26 runWakeup HIGH
+           7 cyclomatic    7 cognitive   46 lines
+          56.0 CRAP
+  tools/apps/youtube.ts
+    :11 resolveLatestVideo HIGH
+           7 cyclomatic    6 cognitive   49 lines
+          56.0 CRAP
+  tools/apps/index.ts
+    :12 handleChrome HIGH
+           7 cyclomatic    8 cognitive   12 lines
+          56.0 CRAP
+  modes/gateway/index.ts
+    :80 handleGatewayCommand HIGH
+           7 cyclomatic    9 cognitive   53 lines
+          56.0 CRAP
+  ai/response-cache.ts
+    :98 lookup HIGH
+           7 cyclomatic   10 cognitive   29 lines
+          56.0 CRAP
+  ai/ai.config.ts
+    :37 applyTelegramOverrides HIGH
+           7 cyclomatic    3 cognitive    9 lines
+          56.0 CRAP
+  modes/plan/orchestrator.ts
+    :34 runPlanMode HIGH
+           7 cyclomatic    7 cognitive   60 lines
+          56.0 CRAP
+  modes/agent/model-selector.ts
+    :64 selectModel HIGH
+           7 cyclomatic    9 cognitive   42 lines
+          56.0 CRAP
+  modes/gateway/adapters/telegram.ts
+    :77 initialize HIGH
+           7 cyclomatic    5 cognitive  207 lines
+          56.0 CRAP
+  modes/plan/plan-executor.ts
+    :115 synthesizeFinalAnswer HIGH
+           7 cyclomatic    5 cognitive   38 lines
+          56.0 CRAP
+  tools/code-formatter.ts
+    :14 detectFormatter HIGH
+           7 cyclomatic    6 cognitive   47 lines
+          56.0 CRAP
+  tools/index.ts
+    :42 runTool HIGH
+           7 cyclomatic    9 cognitive   33 lines
+          56.0 CRAP
+  modes/cli.ts
+    :7 runCli HIGH
+           7 cyclomatic    9 cognitive   32 lines
+          56.0 CRAP
+  modes/plan/plan-generator.ts
+    :116 steps HIGH
+           7 cyclomatic    6 cognitive    9 lines
+          56.0 CRAP
+  modes/agent/context-manager.ts
+    :168 <arrow>
+           6 cyclomatic    5 cognitive    7 lines
+          42.0 CRAP
+  modes/agent/orchestrator.ts
+    :375 persistSession
+           6 cyclomatic    4 cognitive   15 lines
+          42.0 CRAP
+  tools/web-search.ts
+    :89 execute
+           6 cyclomatic    4 cognitive   18 lines
+          42.0 CRAP
+  ai/context-compressor.ts
+    :66 <arrow>
+           6 cyclomatic    9 cognitive   16 lines
+          42.0 CRAP
+    :107 compressMemoryForPrompt
+           6 cyclomatic    5 cognitive   40 lines
+          42.0 CRAP
+  tools/file-tools.ts
+    :159 getFiles
+           6 cyclomatic   10 cognitive   21 lines
+          42.0 CRAP
+  tools/apps/index.ts
+    :49 handleSystemService
+           6 cyclomatic    5 cognitive    9 lines
+          42.0 CRAP
+  tools/apps/system.ts
+    :13 launchVsCode
+           6 cyclomatic    7 cognitive   47 lines
+          42.0 CRAP
+  ai/response-cache.ts
+    :37 cosineSimilarity
+           6 cyclomatic    5 cognitive   18 lines
+          42.0 CRAP
+  tools/apps/chrome.ts
+    :8 openChromeUrl
+           6 cyclomatic    7 cognitive   30 lines
+          42.0 CRAP
+  modes/agent/session-memory.ts
+    :66 import
+           6 cyclomatic    5 cognitive   12 lines
+          42.0 CRAP
+  modes/ask/tool-agent.ts
+    :356 handleAlarmSet
+           6 cyclomatic    6 cognitive   26 lines
+          42.0 CRAP
+    :383 handleMemoryRecall
+           6 cyclomatic    5 cognitive   28 lines
+          42.0 CRAP
+    :412 simulateStream
+           6 cyclomatic    7 cognitive   13 lines
+          42.0 CRAP
+  modes/agent/action-planner.ts
+    :62 generateStepsWithLLM
+           6 cyclomatic    5 cognitive   60 lines
+          42.0 CRAP
+  modes/plan/orchestrator.ts
+    :14 displayPlan
+           6 cyclomatic    8 cognitive   19 lines
+          42.0 CRAP
+  modes/agent/reflection-engine.ts
+    :256 suggestNextStep
+           6 cyclomatic    5 cognitive   16 lines
+          42.0 CRAP
+    :273 suggestedFix
+           6 cyclomatic    5 cognitive   21 lines
+          42.0 CRAP
+  modes/gateway/adapters/telegram.ts
+    :33 savePairedUser
+           6 cyclomatic    7 cognitive   23 lines
+          42.0 CRAP
+    :175 handleAudio
+           6 cyclomatic    5 cognitive   41 lines
+          42.0 CRAP
+  tui/setup.ts
+    :182 runSetup
+           6 cyclomatic    5 cognitive   41 lines
+          42.0 CRAP
+  vision/reason.ts
+    :11 reasonAboutContent
+           6 cyclomatic    4 cognitive   61 lines
+          42.0 CRAP
+  vision/perceive.ts
+    :25 detectContentType
+           6 cyclomatic    4 cognitive   20 lines
+          42.0 CRAP
+  memory/store.ts
+    :49 loadChatHistory
+           6 cyclomatic    7 cognitive   26 lines
+          42.0 CRAP
+    :109 parseAndSaveGraphRelations
+           6 cyclomatic    7 cognitive   16 lines
+          42.0 CRAP
+    :200 loadMemory
+           6 cyclomatic    7 cognitive   49 lines
+          42.0 CRAP
+  tools/code-formatter.ts
+    :62 formatFile
+           6 cyclomatic    5 cognitive   28 lines
+          42.0 CRAP
+  tools/apps/browser-actions.ts
+    :113 listTabs
+           6 cyclomatic    5 cognitive   41 lines
+          42.0 CRAP
+    :158 switchToTab
+           6 cyclomatic    8 cognitive   91 lines
+          42.0 CRAP
+  modes/agent/orchestrator.ts
+    :310 phasePlan
+           5 cyclomatic    4 cognitive   19 lines
+          30.0 CRAP
+  modes/ask/fast-path.ts
+    :49 tryProvider
+           5 cyclomatic    5 cognitive   44 lines
+          30.0 CRAP
+    :234 <arrow>
+           5 cyclomatic    2 cognitive    9 lines
+          30.0 CRAP
+  tools/apps/safari.ts
+    :9 openSafariUrl
+           5 cyclomatic    5 cognitive   27 lines
+          30.0 CRAP
+  vision/act.ts
+    :34 decideAction
+           5 cyclomatic    3 cognitive   41 lines
+          30.0 CRAP
+  tools/apps/index.ts
+    :65 handleSystemClipboard
+           5 cyclomatic    4 cognitive    8 lines
+          30.0 CRAP
+    :128 handleBrowserAction
+           5 cyclomatic    4 cognitive   12 lines
+          30.0 CRAP
+  modes/ask/orchestrator.ts
+    :69 streamAnswer
+           5 cyclomatic    6 cognitive    9 lines
+          30.0 CRAP
+  modes/gateway/index.ts
+    :33 start
+           5 cyclomatic    6 cognitive   19 lines
+          30.0 CRAP
+  ai/response-cache.ts
+    :67 load
+           5 cyclomatic    5 cognitive   13 lines
+          30.0 CRAP
+  modes/agent/swarm/coordinator.ts
+    :104 runPromises
+           5 cyclomatic    4 cognitive   14 lines
+          30.0 CRAP
+  memory/consolidator.ts
+    :14 consolidate
+           5 cyclomatic    3 cognitive   43 lines
+          30.0 CRAP
+  modes/agent/action-planner.ts
+    :105 <arrow>
+           5 cyclomatic    4 cognitive   10 lines
+          30.0 CRAP
+  modes/agent/action-history.ts
+    :23 snapshotBefore
+           5 cyclomatic    5 cognitive   20 lines
+          30.0 CRAP
+  modes/agent/model-selector.ts
+    :21 constructor
+           5 cyclomatic    2 cognitive    4 lines
+          30.0 CRAP
+  modes/agent/reflection-engine.ts
+    :94 analyzeFailurePattern
+           5 cyclomatic    4 cognitive   28 lines
+          30.0 CRAP
+    :140 validateFileCreate
+           5 cyclomatic    4 cognitive   36 lines
+          30.0 CRAP
+    :177 validateFileModify
+           5 cyclomatic    4 cognitive   35 lines
+          30.0 CRAP
+  modes/gateway/adapters/telegram.ts
+    :150 <arrow>
+           5 cyclomatic    4 cognitive   23 lines
+          30.0 CRAP
+    :320 checkAuthorized
+           5 cyclomatic    4 cognitive    8 lines
+          30.0 CRAP
+  tools/code-exec.ts
+    :112 detectHint
+           5 cyclomatic    5 cognitive   19 lines
+          30.0 CRAP
+  modes/agent/mutation-executor.ts
+    :171 executeShellCommand
+           5 cyclomatic    5 cognitive   18 lines
+          30.0 CRAP
+  modes/plan/plan-executor.ts
+    :69 executePlan
+           5 cyclomatic    8 cognitive   45 lines
+          30.0 CRAP
+  memory/store.ts
+    :127 syncGraphToMarkdown
+           5 cyclomatic    4 cognitive   25 lines
+          30.0 CRAP
+  modes/agent/session-manager.ts
+    :306 readMessages
+           5 cyclomatic    5 cognitive   16 lines
+          30.0 CRAP
+  modes/gateway/adapters/slack.ts
+    :21 sendMessage
+           5 cyclomatic    3 cognitive   17 lines
+          30.0 CRAP
+  ai/llm.ts
+    :96 buildCachePrompt
+           5 cyclomatic    7 cognitive    9 lines
+          30.0 CRAP
+  Functions exceeding cyclomatic, cognitive, or CRAP thresholds (https://docs.fallow.tools/explanations/health#complexity-metrics)
+  To suppress: // fallow-ignore-next-line complexity
+
+● File health scores (69 files) · sorted by triage concern
+
+   93.1    ai/providers/stream-adapter.ts                  risk
+            111 LOC    1 fan-in    0 fan-out    0% dead  0.23 density  650.0 risk
+
+   89.2    modes/agent/test-runner.ts                      risk
+            183 LOC    1 fan-in    0 fan-out    0% dead  0.36 density  600.0 risk
+
+   82.6    modes/agent/orchestrator.ts                     risk
+            610 LOC    2 fan-in   15 fan-out    0% dead  0.21 density  552.0 risk
+
+   89.3    tools/file-tools.ts                             risk
+            185 LOC    1 fan-in    2 fan-out    0% dead  0.21 density  552.0 risk
+
+   90.9    modes/agent/swarm/worker.ts                     risk
+            246 LOC    1 fan-in    4 fan-out    0% dead  0.09 density  420.0 risk
+
+   82.2    ai/ai.config.ts                                 risk
+             86 LOC   24 fan-in    1 fan-out    0% dead  0.50 density  380.0 risk
+
+   91.0    tui/setup.ts                                    risk
+            223 LOC    1 fan-in    0 fan-out    0% dead  0.30 density  380.0 risk
+
+   86.3    modes/ask/tool-agent.ts                         risk
+            591 LOC    3 fan-in    7 fan-out    0% dead  0.18 density  342.0 risk
+
+   89.6    modes/agent/action-planner.ts                   risk
+            368 LOC    1 fan-in    2 fan-out    0% dead  0.20 density  342.0 risk
+
+   90.3    modes/ask/panda-mode.ts                         risk
+            170 LOC    3 fan-in    4 fan-out    0% dead  0.11 density  342.0 risk
+
+  ... and 59 more files (--format json for full list)
+
+  Sorted by triage concern: the larger of low-MI concern and CRAP risk. The risk / structure tag marks which one placed each file. MI reflects complexity, coupling, and dead code; risk reflects untested complexity (CRAP) and can diverge from MI. Risk: low <15, moderate 15-30, high >=30. CRAP estimated from export references (85% direct, 40% indirect, 0% untested). Run `fallow health --coverage <coverage-final.json>` for exact scores. https://docs.fallow.tools/explanations/health#file-health-scores
+
+● Hotspots (30 files, since 6 months)
+
+   40.6 ▼  ai/ai.config.ts
+          11 commits    290 churn  0.50 density  24 fan-in  ▼ cooling
+
+   36.0 ▼  modes/ask/tool-agent.ts
+          27 commits   1770 churn  0.18 density   3 fan-in  ▼ cooling
+
+   17.0 ▼  ai/llm.ts
+          10 commits    935 churn  0.23 density   7 fan-in  ▼ cooling
+
+   16.4 ▼  modes/ask/fast-path.ts
+          17 commits    483 churn  0.13 density   4 fan-in  ▼ cooling
+
+   15.5 ▼  modes/gateway/index.ts
+          10 commits    389 churn  0.21 density   2 fan-in  ▼ cooling
+
+   13.9 ▼  modes/agent/orchestrator.ts
+           9 commits    755 churn  0.21 density   2 fan-in  ▼ cooling
+
+   13.7 ▼  tools/code-exec.ts
+           6 commits    322 churn  0.31 density   1 fan-in  ▼ cooling
+
+   13.3 ▼  tui/setup.ts
+           6 commits    207 churn  0.30 density   1 fan-in  ▼ cooling
+
+   11.5 ▲  modes/gateway/adapters/telegram.ts
+           6 commits    438 churn  0.26 density   1 fan-in  ▲ accelerating
+
+    8.8 ▼  memory/store.ts
+           5 commits    370 churn  0.24 density   4 fan-in  ▼ cooling
+
+    8.0 ▼  tui/wakeup.ts
+           6 commits     89 churn  0.18 density   1 fan-in  ▼ cooling
+
+    7.9 ▼  canvas/server.ts
+           5 commits    277 churn  0.21 density   2 fan-in  ▼ cooling
+
+    7.7 ▼  tools/file-tools.ts
+           5 commits    296 churn  0.21 density   1 fan-in  ▼ cooling
+
+    7.4 ▼  modes/agent/action-planner.ts
+           5 commits    475 churn  0.20 density   1 fan-in  ▼ cooling
+
+    6.3 ▼  index.ts
+           5 commits    156 churn  0.17 density   0 fan-in  ▼ cooling
+
+    5.8 ▼  modes/agent/swarm/coordinator.ts
+           5 commits    326 churn  0.16 density   1 fan-in  ▼ cooling
+
+    5.7 ▼  modes/ask/panda-mode.ts
+           7 commits    243 churn  0.11 density   3 fan-in  ▼ cooling
+
+    5.3 ▼  modes/agent/swarm/worker.ts
+           8 commits    443 churn  0.09 density   1 fan-in  ▼ cooling
+
+    5.3 ▼  modes/cli.ts
+           4 commits     66 churn  0.18 density   1 fan-in  ▼ cooling
+
+    4.7 ▼  modes/ask/orchestrator.ts
+           4 commits    547 churn  0.16 density   2 fan-in  ▼ cooling
+
+    4.2 ▼  tools/web-search.ts
+           3 commits    157 churn  0.19 density   2 fan-in  ▼ cooling
+
+    3.9 ▼  modes/agent/model-selector.ts
+           3 commits    168 churn  0.18 density   3 fan-in  ▼ cooling
+
+    3.8 ▼  memory/consolidator.ts
+           4 commits    170 churn  0.13 density   1 fan-in  ▼ cooling
+
+    3.6 ▼  tools/apps/system.ts
+           3 commits    294 churn  0.16 density   1 fan-in  ▼ cooling
+
+    3.5 ▼  modes/agent/mutation-executor.ts
+           3 commits    197 churn  0.16 density   1 fan-in  ▼ cooling
+
+    3.5 ▼  tools/index.ts
+           4 commits     88 churn  0.12 density   5 fan-in  ▼ cooling
+
+    3.1 ─  modes/agent/types.ts
+           6 commits    456 churn  0.07 density  34 fan-in  ─ stable
+
+    3.1 ▼  modes/plan/plan-generator.ts
+           3 commits    876 churn  0.14 density   1 fan-in  ▼ cooling
+
+    2.2 ▼  modes/ask/classifier.ts
+           5 commits    174 churn  0.06 density   3 fan-in  ▼ cooling
+
+    1.1 ▼  ai/providers/nvidia-nim.ts
+           3 commits    197 churn  0.05 density   4 fan-in  ▼ cooling
+
+  38 files excluded (< 3 commits)
+
+  Files with high churn and high complexity — https://docs.fallow.tools/explanations/health#hotspot-metrics
+
+● Refactoring targets (10)
+  7 medium · 3 high
+    score = quick-win ROI (higher = better) · pri = absolute priority
+
+   13.8  pri:41.3    ai/ai.config.ts
+         high impact · effort:high · confidence:medium  Split high-impact file (86 LOC) — 24 dependents amplify every change
+
+   11.3  pri:22.5    tools/apps/index.ts
+         untested risk · effort:medium · confidence:high  6 complex functions lack test coverage path, add tests before modifying
+
+    9.5  pri:28.6    modes/ask/tool-agent.ts
+         complexity · effort:high · confidence:high  Extract parseAlarmTime (cognitive: 32) in 591-LOC file into smaller functions
+
+    8.0  pri:24.1    modes/agent/orchestrator.ts
+         complexity · effort:high · confidence:high  Extract runAgentMode (cognitive: 40) and runReactorLoop (cognitive: 35) in 610-LOC file into smaller functions
+
+    8.0  pri:16.0    tools/code-exec.ts
+         untested risk · effort:medium · confidence:high  2 complex functions lack test coverage path, add tests before modifying
+
+    6.9  pri:13.7    modes/gateway/adapters/slack.ts
+         untested risk · effort:medium · confidence:high  2 complex functions lack test coverage path, add tests before modifying
+
+    6.5  pri:12.9    modes/agent/test-runner.ts
+         complexity · effort:medium · confidence:high  Extract detectTestRunner (cognitive: 33) in 183-LOC file into smaller functions
+
+    5.3  pri:10.6    modes/agent/swarm/worker.ts
+         complexity · effort:medium · confidence:high  Extract run (cognitive: 30) in 246-LOC file into smaller functions
+
+    5.1  pri:10.1    tools/apps/system.ts
+         complexity · effort:medium · confidence:high  Extract controlService (cognitive: 34) in 281-LOC file into smaller functions
+
+    4.5  pri:9.0    ai/providers/stream-adapter.ts
+         complexity · effort:medium · confidence:high  Extract streamCompletion (cognitive: 35) in 111-LOC file into smaller functions
+
+  Prioritized refactoring recommendations based on complexity, churn, and coupling signals — https://docs.fallow.tools/explanations/health#refactoring-targets
+

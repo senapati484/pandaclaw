@@ -86,45 +86,29 @@ export function execShell(command: string): Promise<string> {
 }
 
 /**
- * Checks if a target application or process is currently running on the device.
+ * Opens a URL in a macOS browser using AppleScript.
+ * @param appName The browser application name (e.g., 'Google Chrome', 'Safari')
+ * @param url The URL to open
  */
-export async function isAppRunning(appName: string): Promise<boolean> {
-  const platform = getPlatform();
-
-  try {
-    if (platform === "darwin") {
-      const script = `tell application "System Events" to (name of processes) contains "${appName}"`;
-      const result = await execAppleScript(script);
-      return result.toLowerCase() === "true";
-    }
-
-    if (platform === "win32") {
-      const cmd = `Get-Process -Name "${appName}" -ErrorAction SilentlyContinue`;
-      const result = await execPowerShell(cmd);
-      return result.length > 0;
-    }
-
-    // Linux fallback
-    const result = await execShell(`pgrep -f "${appName}"`);
-    return result.length > 0;
-  } catch {
-    return false;
-  }
+export async function openMacBrowserUrl(appName: string, url: string): Promise<void> {
+  const cleanUrl = url.replace(/"/g, '\\"');
+  const targetProperty = appName === "Safari" ? "document 1" : "active tab of window 1";
+  const script = `
+    tell application "${appName}"
+      activate
+      delay 0.3
+      if (count of windows) is 0 then
+        make new window
+        set URL of ${targetProperty} to "${cleanUrl}"
+      else
+        tell window 1
+          make new tab with properties {URL:"${cleanUrl}"}
+        end tell
+      end if
+    end tell
+  `;
+  await execAppleScript(script);
 }
 
-/**
- * Activates or launches a target application by name.
- */
-export async function activateApp(appName: string): Promise<void> {
-  const platform = getPlatform();
 
-  if (platform === "darwin") {
-    await execAppleScript(`tell application "${appName}" to activate`);
-  } else if (platform === "win32") {
-    // Launch app via PowerShell Start-Process or shell activation
-    await execPowerShell(`Start-Process "${appName}"`);
-  } else {
-    // Linux launch
-    await execShell(`${appName} &`);
-  }
-}
+

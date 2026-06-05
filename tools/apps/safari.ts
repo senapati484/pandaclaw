@@ -1,7 +1,4 @@
-// tools/apps/safari.ts
-// Fallback browser launcher supporting macOS, Windows, and Linux
-
-import { getPlatform, execAppleScript, execPowerShell, execShell } from "./utils.js";
+import { getPlatform, execAppleScript, execPowerShell, execShell, openMacBrowserUrl } from "./utils.js";
 
 /**
  * Open a specific URL in the fallback browser.
@@ -13,22 +10,7 @@ export async function openSafariUrl(url: string): Promise<string> {
   const platform = getPlatform();
 
   if (platform === "darwin") {
-    const cleanUrl = url.replace(/"/g, '\\"');
-    const script = `
-      tell application "Safari"
-        activate
-        delay 0.3
-        if (count of windows) is 0 then
-          make new window
-          set URL of document 1 to "${cleanUrl}"
-        else
-          tell window 1
-            make new tab with properties {URL:"${cleanUrl}"}
-          end tell
-        end if
-      end tell
-    `;
-    await execAppleScript(script);
+    await openMacBrowserUrl("Safari", url);
     return `✅ Opened URL in Safari: ${url}`;
   }
 

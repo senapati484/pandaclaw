@@ -17,7 +17,7 @@ import type {
 // ── Compact codebase index ─────────────────────────────────────────────────
 // BEFORE (full JSON): ~15,000 tokens for 300 files
 // AFTER  (compact):    ~1,200 tokens for same 300 files
-export function compressCodebaseIndex(
+function compressCodebaseIndex(
   index: CodebaseIndex,
   maxFiles = 80
 ): string {
@@ -55,7 +55,7 @@ export function compressCodebaseIndex(
 // ── Compact action history ─────────────────────────────────────────────────
 // BEFORE (full JSON): ~500 tokens per action × 20 actions = 10,000 tokens
 // AFTER  (compact):    ~40 tokens per action  × 20 actions =    800 tokens
-export function compressActionHistory(
+function compressActionHistory(
   actions: ActionLog[],
   keep = 8
 ): string {
@@ -86,7 +86,7 @@ export function compressActionHistory(
 // Send head + tail of large files instead of full content.
 // BEFORE: 8,000 token file sent in full
 // AFTER:  ~600 tokens (first 40 + last 20 lines + summary)
-export function compressFileContent(
+function compressFileContent(
   path: string,
   content: string,
   maxLines = 60
@@ -104,7 +104,7 @@ export function compressFileContent(
 // ── Compact memory entries ─────────────────────────────────────────────────
 // BEFORE: full JSON array of MemoryEntry objects
 // AFTER:  one line per entry, only meaningful constraints/patterns
-export function compressMemoryForPrompt(memory: SessionMemory): string {
+function compressMemoryForPrompt(memory: SessionMemory): string {
   const parts: string[] = [];
 
   if (memory.learnedConstraints.length > 0) {
@@ -145,100 +145,6 @@ export function compressMemoryForPrompt(memory: SessionMemory): string {
   return parts.length > 0 ? parts.join("\n\n") : "(no memory yet)";
 }
 
-// ── Worker context slice ───────────────────────────────────────────────────
-// Each swarm worker gets only what it actually needs to do its job.
-//
-//   researcher  → full file tree (compressed) + memory, NO file contents
-//   coder       → 5 most relevant file contents + memory, minimal index
-//   verifier    → only the changed file content + memory
-//   visualizer  → compact index only (no file contents)
-//
-export function sliceContextForWorker(
-  role: "researcher" | "coder" | "verifier" | "visualizer",
-  index: CodebaseIndex,
-  memory: SessionMemory,
-  relevantPaths: string[] = []
-): string {
-  const memStr = compressMemoryForPrompt(memory);
-
-  switch (role) {
-    case "researcher": {
-      // Gets full file tree (compressed) but no file contents
-      const idx = compressCodebaseIndex(index, 100);
-      return `${idx}\n\n${memStr}`;
-    }
-
-    case "coder": {
-      // Gets compact index + up to 5 relevant file contents
-      const idx = compressCodebaseIndex(index, 30);
-      const fileContents = relevantPaths
-        .slice(0, 5)
-        .map((p) => {
-          const cached = memory.contextCache.get(p);
-          if (!cached) return `// ${p} — (not in cache, will need to read)`;
-          return `// === ${p} ===\n${compressFileContent(p, cached.content)}`;
-        })
-        .join("\n\n");
-      return [idx, fileContents, memStr].filter(Boolean).join("\n\n");
-    }
-
-    case "verifier": {
-      // Gets only the one changed file content + memory
-      const target = relevantPaths[0];
-      if (!target) return memStr;
-      const cached = memory.contextCache.get(target);
-      const fileStr = cached
-        ? `// === ${target} (target) ===\n${compressFileContent(target, cached.content)}`
-        : `target_file: ${target}`;
-      return `${fileStr}\n\n${memStr}`;
-    }
-
-    case "visualizer": {
-      // Gets no file content — just compact index + memory
-      const idx = compressCodebaseIndex(index, 50);
-      return `${idx}\n\n${memStr}`;
-    }
-  }
-}
-
-// ── Full prompt context builder ────────────────────────────────────────────
-// Drop-in replacement for raw JSON serialization of ReactorSession.
-// Call this instead of JSON.stringify(session) when building prompts.
-// Typical reduction: 25,000 tokens → ~2,500 tokens
-export function buildPromptContext(
-  goal: string,
-  index: CodebaseIndex,
-  actions: ActionLog[],
-  memory: SessionMemory,
-  relevantPaths: string[] = []
-): string {
-  const goalLine = `goal: ${goal}`;
-  const indexStr = compressCodebaseIndex(index, 80);
-  const actionsStr = compressActionHistory(actions, 8);
-  const memStr = compressMemoryForPrompt(memory);
-
-  // Relevant file contents if provided
-  const fileContents = relevantPaths
-    .slice(0, 3)
-    .map((p) => {
-      const cached = memory.contextCache.get(p);
-      if (!cached) return null;
-      return `// === ${p} ===\n${compressFileContent(p, cached.content)}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
-
-  return [
-    goalLine,
-    indexStr,
-    fileContents && `relevant_files:\n${fileContents}`,
-    `recent_actions:\n${actionsStr}`,
-    memStr,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
 /**
  * Minifies and compresses any JSON string or object to be extremely token-efficient.
  * - Strips all spaces, indentation, and newlines.
@@ -256,7 +162,6 @@ export function compressJson(data: unknown): string {
       try {
         obj = JSON.parse(trimmed);
       } catch {
-        // Not valid JSON, return as is
         return trimmed;
       }
     } else {
@@ -264,18 +169,15 @@ export function compressJson(data: unknown): string {
     }
   }
 
-  // Recursively prune/truncate long values and deep nesting to save tokens
   function prune(val: unknown, depth = 0): unknown {
     if (depth > 5) return "... [max depth reached]";
     if (typeof val === "string") {
-      // Truncate excessively long strings (like base64, HTML dumps, long descriptions) in JSON values
       if (val.length > 250) {
         return val.slice(0, 250) + `... [truncated ${val.length - 250} chars]`;
       }
       return val;
     }
     if (Array.isArray(val)) {
-      // Limit arrays to 15 items maximum to avoid token bloat
       if (val.length > 15) {
         const sliced = val.slice(0, 15).map((item) => prune(item, depth + 1));
         sliced.push(`... [truncated ${val.length - 15} items]`);
@@ -295,7 +197,7 @@ export function compressJson(data: unknown): string {
 
   try {
     const prunedObj = prune(obj);
-    return JSON.stringify(prunedObj); // Stringify without spaces or newlines (fully compressed)
+    return JSON.stringify(prunedObj);
   } catch {
     return typeof obj === "object" ? JSON.stringify(obj) : String(obj);
   }
