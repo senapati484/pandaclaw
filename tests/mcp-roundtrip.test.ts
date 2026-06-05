@@ -7,7 +7,7 @@ import { MCPHost } from "../mcp/host.ts";
 import type { ToolDefinition } from "../modes/agent/types.ts";
 import path from "path";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
-import os from "os";
+import * as os from "os";
 
 const SERVER_BIN = path.resolve(import.meta.dir, "..", "bin", "mcp-server.ts");
 

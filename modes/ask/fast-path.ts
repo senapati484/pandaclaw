@@ -1,7 +1,7 @@
 // modes/ask/fast-path.ts
 // Fast-path LLM call — Groq → OpenRouter → NIM (mistral-large-3)
 
-import os from "os";
+import * as os from "os";
 import path from "path";
 import type { AskTask, AskResult } from "../../modes/agent/types.js";
 import type { PandaConfig } from "../../ai/ai.config.js";

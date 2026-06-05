@@ -4,7 +4,7 @@
 import { describe, expect, test, beforeAll, afterAll, spyOn } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import * as aiConfig from "../ai/ai.config.ts";
 
 const REPO_ROOT = path.join(import.meta.dir, "..");

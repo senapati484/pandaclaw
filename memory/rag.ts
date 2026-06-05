@@ -10,7 +10,7 @@ import { XenovaEmbedder, tryXenovaEmbedder } from "./embedders/xenova.js";
 import type { Embedder } from "./embedders/interface.js";
 import { readConfig } from "../ai/ai.config.js";
 import path from "path";
-import os from "os";
+import * as os from "os";
 
 export interface RAGConfig {
   /** Path to the SQLite database file. Default: ~/.pandaclaw/rag.db */

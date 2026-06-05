@@ -2,7 +2,7 @@
 import { describe, expect, test, spyOn, beforeEach, afterEach } from "bun:test";
 import * as fs from "fs";
 import * as child_process from "child_process";
-import os from "os";
+import * as os from "os";
 import { startDaemon, stopDaemon, daemonStatus } from "../tui/daemon.js";
 
 describe("Daemon Mode", () => {

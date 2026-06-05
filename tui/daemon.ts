@@ -3,7 +3,7 @@
 
 import { existsSync, writeFileSync, mkdirSync, readFileSync, unlinkSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 import { execSync } from "child_process";
 import { purple } from "../utils/brand.js";

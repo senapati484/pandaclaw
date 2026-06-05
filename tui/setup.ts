@@ -3,7 +3,7 @@
 import { intro, outro, text, password, select, isCancel } from "@clack/prompts";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 
 function initializeSetupConfig(configPath: string, configDir: string, isGlobal: boolean): any {

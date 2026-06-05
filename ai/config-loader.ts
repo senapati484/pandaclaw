@@ -2,7 +2,7 @@
 
 import { readFileSync, existsSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { validateConfig, type ValidatedPandaConfig } from "./config-schema.js";
 import { applyEnvironmentOverrides } from "./config-overrides.js";
 

@@ -3,7 +3,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 
 const HOME = os.homedir();

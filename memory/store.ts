@@ -6,7 +6,7 @@ import type { MemoryEntry, PersistentMemory } from "../modes/agent/types.js";
 import type { PandaConfig } from "../ai/ai.config.js";
 import { callLLM } from "../ai/llm.js";
 
-import os from "os";
+import * as os from "os";
 
 const MAX_ENTRIES = 200;
 

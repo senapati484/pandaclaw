@@ -9,7 +9,7 @@ import type {
 import type { PandaConfig } from "../../../ai/ai.config.js";
 import fs from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 import { purple, lavender } from "../../../utils/brand.js";
 

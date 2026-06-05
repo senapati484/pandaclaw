@@ -1,7 +1,7 @@
 // tools/apps/system.ts
 // Cross-platform system-wide operations supporting macOS, Windows, and Linux
 
-import os from "os";
+import * as os from "os";
 import path from "path";
 import { exec } from "child_process";
 import { getPlatform, execAppleScript, execPowerShell, execShell } from "./utils.js";

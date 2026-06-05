@@ -3,7 +3,7 @@
 
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 import { readConfig } from "../ai/ai.config.js";
 import { classifyRoute } from "../modes/ask/classifier.js";

@@ -1,6 +1,6 @@
 // utils/paths.ts
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { existsSync, readFileSync } from "fs";
 
 export function getActiveWorkspace(): string {

@@ -7,7 +7,7 @@ import { MCPHost } from "../mcp/host.ts";
 import type { ToolDefinition } from "../modes/agent/types.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 
 describe("MCP protocol", () => {
   test("encodeMessage produces LSP-style framing", () => {

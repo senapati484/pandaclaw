@@ -7,7 +7,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import type { CheckResult } from "./checks.js";
 import { getMemoryDir, getMemoryPath } from "../../memory/store.js";
 import { findConfigPath } from "../../ai/config-loader.js";

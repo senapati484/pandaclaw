@@ -7,7 +7,7 @@
 
 import type { ToolDefinition } from "../modes/agent/types.js";
 import { spawnSync } from "child_process";
-import os from "os";
+import * as os from "os";
 
 /**
  * Remove `-c user.name=...` and `-c user.email=...` overrides from git commands.

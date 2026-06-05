@@ -4,7 +4,7 @@
 // so the LLM immediately knows if it wrote syntactically invalid code.
 
 import type { ToolDefinition } from "../modes/agent/types.js";
-import os from "os";
+import * as os from "os";
 import path from "path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";

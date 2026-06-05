@@ -25,7 +25,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
 
 import { loadDynamicSkills } from "./dynamic-loader.js";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { readConfig } from "../ai/ai.config.js";
 
 let _guard: SecurityGuard | null = null;

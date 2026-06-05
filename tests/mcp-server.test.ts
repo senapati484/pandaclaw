@@ -8,7 +8,7 @@ import { MCPServer } from "../mcp/server.ts";
 import { Readable, Writable } from "stream";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 
 describe("MCPServer", () => {
   let tmpDir: string;

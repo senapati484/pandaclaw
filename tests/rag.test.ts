@@ -9,7 +9,7 @@ import { tokenize, bigrams } from "../memory/tokenizer.ts";
 import { cosineSimilarity } from "../memory/embedders/interface.ts";
 import { mkdtempSync, rmSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 
 describe("Tokenizer", () => {
   test("lowercases and strips punctuation", () => {

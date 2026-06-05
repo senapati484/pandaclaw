@@ -1,4 +1,4 @@
-import os from "os";
+import * as os from "os";
 import path from "path";
 
 export function resolvePath(inputPath: string): string {

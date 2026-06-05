@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, accessSync, constants, readdirSync } from "fs";
 import { spawnSync } from "child_process";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import { readConfig } from "../../ai/ai.config.js";
 import { parseBinding } from "../agent/binding.js";
 import { getMemoryDir, getMemoryPath } from "../../memory/store.js";

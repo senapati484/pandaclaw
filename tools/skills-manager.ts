@@ -3,7 +3,7 @@
 
 import { existsSync, readdirSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 import chalk from "chalk";
 
 const REGISTRY_URL = "https://pandaclaw.vercel.app/skills/registry.json";

@@ -2,7 +2,7 @@
 // Agentic LLM loop with real tool use (file_read, file_write, list_dir, code_exec, web_search, alarm_set, memory_recall)
 // All paths are resolved dynamically — no hardcoded usernames or device paths.
 
-import os from "os";
+import * as os from "os";
 import type { PandaConfig } from "../../ai/ai.config.js";
 import type { ToolContext } from "../agent/types.js";
 import { TOOLS, runTool } from "../../tools/index.js";

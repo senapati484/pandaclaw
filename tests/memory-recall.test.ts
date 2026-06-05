@@ -8,7 +8,7 @@ import { TFIDFEmbedder } from "../memory/embedders/tfidf.ts";
 import { setRAGStore } from "../memory/rag.ts";
 import { mkdtempSync, rmSync } from "fs";
 import path from "path";
-import os from "os";
+import * as os from "os";
 
 describe("memory_recall tool", () => {
   let tmpDir: string;
